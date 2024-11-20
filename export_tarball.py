@@ -134,7 +134,6 @@ def main(argv):
   # TODO(phajdan.jr): Remove --xz option when it's not needed for compatibility.
   parser.add_option("--xz", action="store_true")
   parser.add_option("--verbose", action="store_true", default=False)
-  parser.add_option("--progress", action="store_true", default=False)
   parser.add_option("--src-dir")
   parser.add_option("--version")
   options, args = parser.parse_args(argv)
@@ -148,9 +147,14 @@ def main(argv):
   if not os.path.exists(options.src_dir):
     print('Cannot find the src directory ' + options.src_dir)
     return 1
-  output_fullname = args[0] + '.tar'
+  output_fullname = args[0] + '.tar.xz'
   output_basename = options.basename or os.path.basename(args[0])
-  archive = MyTarFile.open(output_fullname, 'w')
+  tarball = open(output_fullname, 'w')
+  xz = subprocess.Popen(
+      ['xz', '-T', '0', '-9', '-'],
+      stdin=subprocess.PIPE,
+      stdout=tarball)
+  archive = MyTarFile.open(None, 'w|', xz.stdin)
   archive.set_remove_nonessential_files(options.remove_nonessential_files)
   archive.set_verbose(options.verbose)
   archive.set_src_dir(options.src_dir)
@@ -172,21 +176,12 @@ def main(argv):
       archive.add(options.src_dir, arcname=output_basename)
   finally:
     archive.close()
-  if options.progress:
-    sys.stdout.flush()
-    pv = subprocess.Popen(['pv', '--force', output_fullname],
-                          stdout=subprocess.PIPE,
-                          stderr=sys.stdout)
-    with open(output_fullname + '.xz', 'w') as f:
-      rc = subprocess.call(['xz', '-T', '0', '-9', '-'],
-                           stdin=pv.stdout,
-                           stdout=f)
-    pv.wait()
-  else:
-    rc = subprocess.call(['xz', '-T', '0', '-9', output_fullname])
-  if rc != 0:
+  xz.stdin.close()
+  if xz.wait() != 0:
     print('xz -9 failed!')
     return 1
+  tarball.flush()
+  tarball.close()
   return 0
 if __name__ == "__main__":
   sys.exit(main(sys.argv[1:]))
