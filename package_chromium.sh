@@ -90,10 +90,10 @@ export_tarballs() {
 	clog "Exporting tarballs for version ${1}:"
 	clog "Exporting test data tarball"
 	./export_tarball.py --version --xz --test-data --remove-nonessential-files "chromium-${1}" --src-dir src/
-	mv "chromium-${1}.tar.xz" "out/chromium-${1}-testdata.tar.xz" || die "Failed to move test data tarball"
+	mv "chromium-${1}.tar.xz" "out/chromium-${1}-linux-testdata.tar.xz" || die "Failed to move test data tarball"
 	clog "Exporting main tarball"
 	./export_tarball.py --version --xz --remove-nonessential-files chromium-"${1}" --src-dir src/
-	mv "chromium-${1}.tar.xz" "out/chromium-${1}.tar.xz" || die "Failed to move tarball"
+	mv "chromium-${1}.tar.xz" "out/chromium-${1}-linux.tar.xz" || die "Failed to move main tarball"
 }
 
 main() {
