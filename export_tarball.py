@@ -12,10 +12,11 @@ The above will create file /foo/bar.tar.xz.
 """
 import optparse
 import os
+import stat
 import subprocess
 import sys
 import tarfile
-nonessential_dirs = {
+nonessential_dirs = (
     'third_party/blink/tools',
     'third_party/blink/web_tests',
     'third_party/hunspell_dictionaries',
@@ -25,7 +26,7 @@ nonessential_dirs = {
     'third_party/liblouis/src/tests/braille-specs',
     'third_party/xdg-utils/tests',
     'v8/test',
-}
+)
 ESSENTIAL_FILES = (
     'chrome/test/data/webui/i18n_process_css_test.html',
     'chrome/test/data/webui/mojo/foobar.mojom',
@@ -38,7 +39,7 @@ ESSENTIAL_FILES = (
 ESSENTIAL_GIT_DIRS = (
     # The .git subdirs in the Rust checkout need to exist to build rustc.
     'third_party/rust-src/',)
-TEST_DIRS = {
+TEST_DIRS = (
     'chrome/test/data',
     'content/test/data',
     'courgette/testdata',
@@ -47,7 +48,7 @@ TEST_DIRS = {
     'native_client/src/trusted/service_runtime/testdata',
     'third_party/breakpad/breakpad/src/processor/testdata',
     'third_party/catapult/tracing/test_data',
-}
+)
 # Workaround lack of the exclude parameter in add method in python-2.4.
 # TODO(phajdan.jr): remove the workaround when it's not needed on the bot.
 class MyTarFile(tarfile.TarFile):
@@ -60,16 +61,34 @@ class MyTarFile(tarfile.TarFile):
   def set_src_dir(self, src_dir):
     # pylint: disable=attribute-defined-outside-init
     self.__src_dir = src_dir
+  def set_mtime(self, mtime):
+    # pylint: disable=attribute-defined-outside-init
+    self.__mtime = mtime
   def __report_skipped(self, name):
     if self.__verbose:
       print('D\t%s' % name)
   def __report_added(self, name):
     if self.__verbose:
       print('A\t%s' % name)
+  def __filter(self, tar_info):
+    tar_info.mtime = self.__mtime
+    tar_info.mode |= stat.S_IWUSR
+    tar_info.uid = 0
+    tar_info.gid = 0
+    tar_info.uname = '0'
+    tar_info.gname = '0'
+    return tar_info
   # pylint: disable=redefined-builtin
   def add(self, name, arcname=None, recursive=True, *, filter=None):
+    if os.path.islink(name) and not os.path.exists(name):
+      # Beware of symlinks whose target is nonessential
+      self.__report_skipped(name)
+      return
     rel_name = os.path.relpath(name, self.__src_dir)
     file_path, file_name = os.path.split(name)
+    if file_name == '__pycache__' or file_name.endswith('.pyc'):
+      self.__report_skipped(name)
+      return
     if file_name in ('.svn', 'out'):
       # Since m132 devtools-frontend requires files in node_modules/<module>/out
       # to prevent this happening again we can exclude based on the path
@@ -99,12 +118,12 @@ class MyTarFile(tarfile.TarFile):
                    file_name.endswith('.pydeps') or rel_name in ESSENTIAL_FILES)
       # Remove contents of non-essential directories.
       if not keep_file:
-        for nonessential_dir in (nonessential_dirs | TEST_DIRS):
+        for nonessential_dir in (set(nonessential_dirs) | set(TEST_DIRS)):
           if rel_name.startswith(nonessential_dir) and os.path.isfile(name):
             self.__report_skipped(name)
             return
     self.__report_added(name)
-    tarfile.TarFile.add(self, name, arcname=arcname, recursive=recursive)
+    tarfile.TarFile.add(self, name, arcname=arcname, recursive=recursive, filter=self.__filter)
 def main(argv):
   parser = optparse.OptionParser()
   parser.add_option("--basename")
@@ -135,6 +154,9 @@ def main(argv):
   archive.set_remove_nonessential_files(options.remove_nonessential_files)
   archive.set_verbose(options.verbose)
   archive.set_src_dir(options.src_dir)
+  with open(os.path.join(options.src_dir, 'build/util/LASTCHANGE.committime'), 'r') as f:
+    timestamp = int(f.read())
+    archive.set_mtime(timestamp)
   try:
     if options.test_data:
       for directory in TEST_DIRS:
