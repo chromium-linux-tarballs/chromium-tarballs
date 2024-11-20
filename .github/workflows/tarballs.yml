@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - '*'
+  workflow_dispatch:
+    inputs:
+      version:
+        type: string
+        description: Chromium version
+        required: true
 
 jobs:
   generate-tarball:
@@ -32,8 +38,8 @@ jobs:
           git config --global user.name "Chromium Bot"
           git config --global user.email "chromium@gentoo.org"
 
-      - name: Package Chromium tarballs for ${{ github.ref_name }}
-        run: ./package_chromium.sh ${{ github.ref_name }}
+      - name: Package Chromium tarballs for ${{ inputs.version || github.ref_name }}
+        run: ./package_chromium.sh ${{ inputs.version || github.ref_name }}
 
       - name: Archive build artifacts
         uses: actions/upload-artifact@v4
@@ -42,7 +48,7 @@ jobs:
             path: out/
 
       - name: Notify success
-        if: success()
+        if: success() && github.event_name == 'push'
         uses: Gottox/irc-message-action@v2.1.3
         with:
           server: irc.libera.chat
@@ -52,7 +58,7 @@ jobs:
           message: "Successfully generated Chromium tarballs for ${{ github.ref_name }}"
 
       - name: Notify failure
-        if: failure()
+        if: failure() && github.event_name == 'push'
         uses: Gottox/irc-message-action@v2.1.3
         with:
           server: irc.libera.chat
