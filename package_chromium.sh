@@ -73,6 +73,8 @@ run_hooks() {
 	touch src/chrome/test/data/webui/i18n_process_css_test.html
 	src/tools/update_pgo_profiles.py '--target=linux' update '--gs-url-base=chromium-optimization-profiles/pgo_profiles' ||
 		die "Failed to update PGO profiles"
+	src/v8/tools/builtins-pgo/download_profiles.py --force --check-v8-revision --depot-tools depot_tools download ||
+		die "Failed to download V8 PGO profiles"
 }
 
 # This function exports the tarballs for a given version of Chromium.
@@ -89,7 +91,7 @@ export_tarballs() {
 	clog "Exporting test data tarball"
 	./export_tarball.py --version --xz --test-data --remove-nonessential-files "chromium-${1}" --src-dir src/
 	mv "chromium-${1}.tar.xz" "out/chromium-${1}-testdata.tar.xz" || die "Failed to move test data tarball"
-	clog "Exporting Main tarball"
+	clog "Exporting main tarball"
 	./export_tarball.py --version --xz --remove-nonessential-files chromium-"${1}" --src-dir src/
 	mv "chromium-${1}.tar.xz" "out/chromium-${1}.tar.xz" || die "Failed to move tarball"
 }
@@ -100,6 +102,9 @@ main() {
 	fi
 
 	local version="$1"
+
+	# Some Google Python scripts start with "#!/usr/bin/env python"
+	python --version 2>&1 | grep -q '^Python 3\.' || die "Python 3 must be accessible in the PATH as \"python\""
 
 	clog "Packaging Chromium version ${version}"
 
