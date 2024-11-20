@@ -7,9 +7,23 @@ on:
 
 jobs:
   generate-tarball:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
 
     steps:
+      - name: Free up space on the runner
+        run: |
+          echo Before:
+          df -m .
+          sudo rm -rf \
+            /usr/local/.ghcup \
+            /usr/local/lib/android \
+            /usr/local/share/powershell \
+            /usr/share/dotnet \
+            /usr/share/swift \
+            "$AGENT_TOOLSDIRECTORY"
+          echo After:
+          df -m .
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
