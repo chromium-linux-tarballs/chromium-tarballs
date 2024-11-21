@@ -28,7 +28,7 @@ get_depot_tools() {
 		popd &> /dev/null || die "Failed to exit depot_tools directory"
 	else
 		clog "Cloning depot_tools repository"
-		git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git || die "Failed to clone depot_tools repository"
+		git clone -q https://chromium.googlesource.com/chromium/tools/depot_tools.git || die "Failed to clone depot_tools repository"
 	fi
 	export PATH="$(pwd)/depot_tools:${PATH}"
 }
@@ -63,7 +63,10 @@ configure_gclient() {
 # 4. Updates the DAWN version with the latest revision from the Dawn repository.
 # 5. Touches the i18n_process_css_test.html file to ensure that it exists. Tests fail if this file does not exist.
 # 6. Updates the PGO profiles for the Linux target using the specified Google Storage URL base.
-
+# 7. Updates the V8 PGO profiles.
+#
+# These largely match what Google does in their process:
+# https://chromium.googlesource.com/chromium/tools/build/+/refs/heads/main/recipes/recipes/publish_tarball.py
 run_hooks() {
 	clog "Running post-checkout hooks"
 	src/build/util/lastchange.py -o src/build/util/LASTCHANGE
@@ -77,8 +80,6 @@ run_hooks() {
 		die "Failed to download V8 PGO profiles"
 }
 
-
-
 get_gn_sources() {
 	clog "Fetching GN sources"
 	local temp_dir git_root tools_gn gn_commit basename
@@ -86,10 +87,11 @@ get_gn_sources() {
 	git_root="${temp_dir}/gn"
 	tools_gn="src/tools/gn"
 	# This is x86_64 only(?); we should add support for other architectures in the future
-	gn_commit=$(src/buildtools/linux64/gn --version | grep -oP '\d+ \((.+)\)' | cut -d ' ' -f 2 | tr -d '()')
+	gn_commit=$(src/buildtools/linux64/gn --version | perl -ne '/^\d+ \((\w+)\)$/ and print $1' | grep .)
 
 	# Clone the GN repository
-	git clone https://gn.googlesource.com/gn "${git_root}" || die "Failed to clone GN repository"
+	git clone -q https://gn.googlesource.com/gn.git "${git_root}" || die "Failed to clone GN repository"
+	git -C "${git_root}" config advice.detachedHead false
 	git -C "${git_root}" checkout "${gn_commit}"
 
 	# Generate last_commit_position.h
@@ -125,6 +127,9 @@ export_tarballs() {
 	clog "Exporting main tarball"
 	./export_tarball.py --version --xz --remove-nonessential-files chromium-"${1}" --src-dir src/
 	mv "chromium-${1}.tar.xz" "out/chromium-${1}-linux.tar.xz" || die "Failed to move main tarball"
+
+	# Simpler version of
+	# https://chromium.googlesource.com/chromium/tools/build/+/refs/heads/main/recipes/recipe_modules/chromium/resources/generate_hashes.py
 	clog "Generating hashes"
 	local hash tarball
 	pushd out &> /dev/null || die "Failed to enter out directory"
@@ -134,6 +139,8 @@ export_tarballs() {
 		done
 	done
 	popd &> /dev/null || die "Failed to exit out directory"
+	# Include the hashes in the log output
+	cat out/*.hashes
 }
 
 main() {

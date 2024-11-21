@@ -27,6 +27,7 @@ nonessential_dirs = (
     'third_party/jdk/current',
     'third_party/jdk/extras',
     'third_party/liblouis/src/tests/braille-specs',
+    'third_party/llvm-build',
     'third_party/xdg-utils/tests',
     'v8/test',
 )
