@@ -94,6 +94,13 @@ export_tarballs() {
 	clog "Exporting main tarball"
 	./export_tarball.py --version --xz --remove-nonessential-files chromium-"${1}" --src-dir src/
 	mv "chromium-${1}.tar.xz" "out/chromium-${1}-linux.tar.xz" || die "Failed to move main tarball"
+	clog "Generating hashes"
+	local hash tarball
+	for tarball in "chromium-${1}.tar.xz" "chromium-${1}-testdata.tar.xz"; do
+		for hash in md5 sha1 sha224 sha256 sha384 sha512; do
+			(cd out && echo "$hash  $(${hash}sum "$tarball")")
+		done > "out/$tarball.hashes"
+	done
 }
 
 main() {
