@@ -5,6 +5,7 @@
 source logging.sh
 
 set -e
+umask 022
 
 # This function clones the depot_tools repository from the Chromium project
 # and adds the depot_tools directory to the system PATH.
@@ -100,6 +101,7 @@ get_gn_sources() {
 	# Move GN sources to the tools/gn directory
 	find "${git_root}" -maxdepth 1 -mindepth 1 -not -name ".git" -not -name ".gitignore" -not -name ".linux-sysroot" -not -name "out" -print | while read -r f; do
 		basename=$(basename "$f")
+		rm -rf "$tools_gn/$basename"
 		mv "$f" "$tools_gn/$basename" || die "Failed to move $basename"
 	done
 
@@ -122,7 +124,7 @@ export_tarballs() {
 	fi
 	clog "Exporting tarballs for version ${1}:"
 	clog "Exporting test data tarball"
-	./export_tarball.py --version --xz --test-data --remove-nonessential-files "chromium-${1}" --src-dir src/
+	./export_tarball.py --version --xz --test-data "chromium-${1}" --src-dir src/
 	mv "chromium-${1}.tar.xz" "out/chromium-${1}-linux-testdata.tar.xz" || die "Failed to move test data tarball"
 	clog "Exporting main tarball"
 	./export_tarball.py --version --xz --remove-nonessential-files chromium-"${1}" --src-dir src/
