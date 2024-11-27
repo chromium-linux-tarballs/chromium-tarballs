@@ -32,11 +32,21 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@v4
+        # tag annotations
+        with:
+          fetch-depth: 0
 
       - name: Configure Git
         run: |
           git config --global user.name "Chromium Bot"
           git config --global user.email "chromium@gentoo.org"
+
+      - name: Get release info
+        id: get_release_info
+        if: github.event_name == 'push'
+        run: |
+          echo "annotation=$(git tag -l --format='%(contents:subject)' ${{ github.ref_name }} | cut -d' ' -f1)" >> ${GITHUB_ENV}
+          echo "channel=$(git tag -l --format='%(contents:subject)' ${{ github.ref_name }} | cut -d' ' -f1 | awk '{ print $3 }')" >> ${GITHUB_ENV}
 
       - name: Package Chromium tarballs for ${{ inputs.version || github.ref_name }}
         run: ./package_chromium.sh ${{ inputs.version || github.ref_name }}
@@ -57,7 +67,7 @@ jobs:
           notice: false
           channel: "#gentoo-chromium"
           nickname: chromium-notifs
-          message: "Successfully generated Chromium tarballs for ${{ github.ref_name }}"
+          message: "Successfully generated Chromium tarballs for ${{ github.ref_name }} (${{ steps.get_release_info.outputs.channel }})"
 
       - name: Notify failure
         if: failure() && github.event_name == 'push'
@@ -67,7 +77,7 @@ jobs:
           notice: false
           channel: "#gentoo-chromium"
           nickname: chromium-notifs
-          message: "Failed to generate Chromium tarballs for ${{ github.ref_name }}"
+          message: "Failed to generate Chromium tarballs for ${{ github.ref_name }} (${{ steps.get_release_info.outputs.channel }})"
 
   upload-tarball:
     runs-on: ubuntu-latest
@@ -96,6 +106,25 @@ jobs:
           --secret_key=${{ secrets.S3_SECRET_KEY }} \
           put chromium*.tar.xz* s3://${{ vars.S3_BUCKET }}/
 
+      - name: Create Release
+        id: create_release
+        if: success() && github.event_name == 'push' && steps.get_release_info.outputs.channel == 'stable'
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: ${{ steps.get_release_info.outputs.annotation }}
+          body: |
+            Files:
+            - [Chromium ${{ github.ref_name }}](https://chromium-tarballs.distfiles.gentoo.org/${{ github.ref_name }}-linux.tar.xz)
+            - [Chromium ${{ github.ref_name }} Hashes](https://chromium-tarballs.distfiles.gentoo.org/${{ github.ref_name }}-linux.tar.xz.hashes)
+            - [Chromium ${{ github.ref_name }} Testdata](https://chromium-tarballs.distfiles.gentoo.org/${{ github.ref_name }}-linux-testdata.tar.xz)
+            - [Chromium ${{ github.ref_name }} Testdata Hashes](https://chromium-tarballs.distfiles.gentoo.org/${{ github.ref_name }}-linux-testdata.tar.xz.hashes)
+
+          draft: false
+          prerelease: false
+
       - name: Notify success
         if: success()
         uses: Gottox/irc-message-action@v2.1.5
@@ -104,7 +133,7 @@ jobs:
           notice: false
           channel: "#gentoo-chromium"
           nickname: chromium-notifs
-          message: "Successfully uploaded Chromium tarballs for ${{ github.ref_name }}"
+          message: "Successfully uploaded Chromium tarballs for ${{ inputs.version || github.ref_name }} ${{ steps.get_release_info.outputs.channel && format('({0})', steps.get_release_info.outputs.channel)}}"
 
       - name: Notify failure
         if: failure()
@@ -114,4 +143,4 @@ jobs:
           notice: false
           channel: "#gentoo-chromium"
           nickname: chromium-notifs
-          message: "Failed to upload Chromium tarballs for ${{ github.ref_name }}"
+          message: "Failed to upload Chromium tarballs for ${{ inputs.version || github.ref_name }} ${{ steps.get_release_info.outputs.channel && format('({0})', steps.get_release_info.outputs.channel)}}"
