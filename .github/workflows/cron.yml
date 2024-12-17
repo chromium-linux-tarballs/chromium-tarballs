@@ -25,34 +25,52 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: Run get_chromium_versions.py
-        id: get_versions
+      - name: Get Chromium release info
         run: |
-          echo "versions=$(python get_chromium_versions.py | tr '\n' ' ')" >> $GITHUB_OUTPUT
+          curl --fail-with-body --max-time 30 --no-progress-meter -o releases.json \
+            'https://versionhistory.googleapis.com/v1/chrome/platforms/linux/channels/all/versions/all/releases?filter=channel%3C=dev&order_by=version%20desc'
+          echo "Latest versions:"
+          jq -r 'limit(10; .releases[].version)' releases.json
 
       - name: Configure Git
-        if: steps.get_versions.outputs.versions != ''
         run: |
           git config --global user.name "Chromium Bot"
           git config --global user.email "chromium@gentoo.org"
 
       - name: Tag new versions
         id: tag_versions
-        if: steps.get_versions.outputs.versions != ''
         run: |
-          for version in ${{ steps.get_versions.outputs.versions }}; do
+          for channel in stable beta dev; do
+              version=$(jq -r --arg CHANNEL "${channel}" \
+                'limit(1; .releases[] | select(.name | test("/channels/" + $CHANNEL + "/")) | .version)' \
+                releases.json)
+              if ! echo "${version}" | tr '\n' '~' | grep -Pq '^(\d{1,4}\.){3}\d{1,4}~$'; then
+                  echo "Channel \"${channel}\" has invalid version \"${version}\""
+                  exit 1
+              fi
+              echo "Channel \"${channel}\" is at version ${version}"
               if git rev-parse "${version}" >/dev/null 2>&1; then
                   echo "Tag ${version} already exists"
               else
-                  _ver=$(python3 get_chromium_versions.py --version ${version})
+                  _ver=$(jq -r --arg VERSION "${version}" \
+                    '.releases[]
+                     | select(.version==$VERSION)
+                     | "Chromium " + .version + ": "
+                       + (.name | sub(".*/channels/(?<ch>\\w+)/.*"; "\(.ch)"))
+                       + " "
+                       + (.serving.startTime
+                          | sub("\\.\\d+"; "")
+                          | fromdateiso8601
+                          | strftime("(%B %d, %Y at %I:%M UTC)"))
+                    ' releases.json)
                   echo "Tagging ${_ver}"
                   git tag -a "${version}" -m "${_ver}"
                   if [[ "${_ver}" == *beta* ]]; then
                       echo beta="${_ver}" >> ${GITHUB_OUTPUT}
                   elif [[ "${_ver}" == *dev* ]]; then
-                      echo dev="${_ver}"  >> ${GITHUB_OUTPUT}
+                      echo dev="${_ver}" >> ${GITHUB_OUTPUT}
                   elif [[ "${_ver}" == *stable* ]]; then
-                      echo stable="${_ver}"  >> ${GITHUB_OUTPUT}
+                      echo stable="${_ver}" >> ${GITHUB_OUTPUT}
                   fi
               fi
           done
