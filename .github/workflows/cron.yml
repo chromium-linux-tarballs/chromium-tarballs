@@ -20,11 +20,6 @@ jobs:
           # If we don't set fetch-depth to 0, we won't be able to fetch tags
           fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-
       - name: Get Chromium release info
         run: |
           curl --fail-with-body --max-time 30 --no-progress-meter -o releases.json \
@@ -78,7 +73,7 @@ jobs:
           git push --follow-tags
 
       - name: Update IRC (Stable)
-        uses: Gottox/irc-message-action@v2.1.5
+        uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
         if: steps.tag_versions.outputs.stable != ''
         with:
           server: irc.libera.chat
@@ -88,7 +83,7 @@ jobs:
           message: "New release: ${{ steps.tag_versions.outputs.stable }}"
 
       - name: Update IRC (Beta)
-        uses: Gottox/irc-message-action@v2.1.5
+        uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
         if: steps.tag_versions.outputs.beta != ''
         with:
           server: irc.libera.chat
@@ -98,7 +93,7 @@ jobs:
           message: "New release: ${{ steps.tag_versions.outputs.beta }}"
 
       - name: Update IRC (Dev)
-        uses: Gottox/irc-message-action@v2.1.5
+        uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
         if: steps.tag_versions.outputs.dev != ''
         with:
           server: irc.libera.chat
