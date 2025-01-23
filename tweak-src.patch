@@ -1,0 +1,21 @@
+This patch is applied by the package_chromium.sh script.
+
+--- a/src/tools/clang/scripts/build.py	2025-01-18 03:27:14.425667488 +0000
++++ b/src/tools/clang/scripts/build.py	2025-01-18 04:40:05.214735256 +0000
+@@ -170,7 +170,7 @@
+     print('Removing %s.' % dir)
+     RmTree(dir)
+ 
+-  clone_cmd = ['git', 'clone', git_url, dir]
++  clone_cmd = ['git', 'clone'] + os.environ.get('EXTRA_GIT_CLONE_ARGS', '').split() + [git_url, dir]
+ 
+   if RunCommand(clone_cmd, fail_hard=False):
+     os.chdir(dir)
+@@ -546,6 +546,7 @@
+ 
+ 
+ def DownloadDebianSysroot(platform_name, skip_download=False):
++  skip_download = True
+   # Download sysroots. This uses basically Chromium's sysroots, but with
+   # minor changes:
+   # - glibc version bumped to 2.18 to make __cxa_thread_atexit_impl

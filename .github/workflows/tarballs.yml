@@ -43,6 +43,7 @@ jobs:
         run: |
           git config --global user.name "Chromium Bot"
           git config --global user.email "chromium@gentoo.org"
+          git config --global advice.detachedHead false
 
       - name: Get release info
         id: get_release_info
@@ -54,7 +55,10 @@ jobs:
           echo "channel=$(git tag -l --format='%(contents:subject)' ${{ github.ref_name }} | awk '{ print $3 }')" >> ${GITHUB_ENV}
 
       - name: Package Chromium tarballs for ${{ inputs.version || github.ref_name }}
-        run: ./package_chromium.sh ${{ inputs.version || github.ref_name }}
+        run: |
+          ./package_chromium.sh ${{ inputs.version || github.ref_name }}
+          test -d src/third_party/llvm     || echo '### NOTE: Failed to download LLVM components' >> $GITHUB_STEP_SUMMARY
+          test -d src/third_party/rust-src || echo '### NOTE: Failed to download Rust components' >> $GITHUB_STEP_SUMMARY
 
       - name: Archive build artifacts
         uses: actions/upload-artifact@v4

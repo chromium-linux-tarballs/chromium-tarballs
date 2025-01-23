@@ -1,0 +1,57 @@
+This patch is applied by the package_chromium.sh script.
+
+--- a/build/recipes/recipe_modules/chromium/resources/export_tarball.py
++++ b/build/recipes/recipe_modules/chromium/resources/export_tarball.py
+@@ -253,6 +253,52 @@ def main(argv):
+ 
+   return 0
+ 
++# Replace Python's internal tarfile.TarInfo._create_header() method with
++# the version from 3.8, as Google uses this version, and it encodes the
++# unused devmajor + devminor fields of the tar record header differently
++# from later versions (0x30/'0' bytes instead of 0x00/'\0'). This allows
++# us to recreate Google's tarball bit-perfectly without needing to use an
++# old version of Python.
++if True:
++    import struct
++    BLOCKSIZE    = tarfile.BLOCKSIZE
++    POSIX_MAGIC  = tarfile.POSIX_MAGIC
++    REGTYPE      = tarfile.REGTYPE
++    calc_chksums = tarfile.calc_chksums
++    itn          = tarfile.itn
++    stn          = tarfile.stn
++
++    # from Python-3.8.10/Lib/tarfile.py:931
++    def _create_header(info, format, encoding, errors):
++        """Return a header block. info is a dictionary with file
++           information, format must be one of the *_FORMAT constants.
++        """
++        parts = [
++            stn(info.get("name", ""), 100, encoding, errors),
++            itn(info.get("mode", 0) & 0o7777, 8, format),
++            itn(info.get("uid", 0), 8, format),
++            itn(info.get("gid", 0), 8, format),
++            itn(info.get("size", 0), 12, format),
++            itn(info.get("mtime", 0), 12, format),
++            b"        ", # checksum field
++            info.get("type", REGTYPE),
++            stn(info.get("linkname", ""), 100, encoding, errors),
++            info.get("magic", POSIX_MAGIC),
++            stn(info.get("uname", ""), 32, encoding, errors),
++            stn(info.get("gname", ""), 32, encoding, errors),
++            itn(info.get("devmajor", 0), 8, format),
++            itn(info.get("devminor", 0), 8, format),
++            stn(info.get("prefix", ""), 155, encoding, errors)
++        ]
++
++        buf = struct.pack("%ds" % BLOCKSIZE, b"".join(parts))
++        chksum = calc_chksums(buf[-BLOCKSIZE:])[0]
++        buf = buf[:-364] + bytes("%06o\0" % chksum, "ascii") + buf[-357:]
++        return buf
++
++    # https://en.wikipedia.org/wiki/Monkey_patch
++    tarfile.TarInfo._create_header = staticmethod(_create_header)
++
+ 
+ if __name__ == "__main__":
+   sys.exit(main(sys.argv[1:]))

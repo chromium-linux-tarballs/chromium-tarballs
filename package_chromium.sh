@@ -7,36 +7,32 @@ source logging.sh
 set -e
 umask 022
 
-# This function clones the depot_tools repository from the Chromium project
-# and adds the depot_tools directory to the system PATH.
+# This function clones one of Google's Chromium-related tool repositories.
 #
 # Usage:
-#   get_depot_tools
+#   get_google_repo REPO_BASENAME
 #
-# The function performs the following steps:
-# 1. Clones the depot_tools repository from the Chromium project's Git repository.
-# 2. Adds the cloned depot_tools directory to the system PATH environment variable.
-get_depot_tools() {
-	clog "Getting depot_tools"
-	if [[ -d "depot_tools" ]]; then
-		clog "depot_tools already exists, pulling latest changes"
-		pushd depot_tools &> /dev/null || die "Failed to enter depot_tools directory"
+get_google_repo() {
+	local repo="${1}"
+	if [[ -d "${repo}" ]]; then
+		clog "${repo} repository already exists, pulling latest changes"
+		pushd "${repo}" &> /dev/null || die "Failed to enter ${repo} directory"
 		if [ "$(git symbolic-ref --short -q HEAD)" == "" ]; then
-			clog "Currently in a detached HEAD state, checking out main branch"
-			git checkout main || die "Failed to checkout main branch in depot_tools repository"
+			clog "Currently in a detached HEAD state, switching to main branch"
+			git switch main || die "Failed to switch to main branch in ${repo} repository"
 		fi
-		git pull || die "Failed to pull latest changes in depot_tools repository"
-		popd &> /dev/null || die "Failed to exit depot_tools directory"
+		git pull || die "Failed to pull latest changes in ${repo} repository"
+		popd &> /dev/null || die "Failed to exit ${repo} directory"
 	else
-		clog "Cloning depot_tools repository"
-		git clone -q https://chromium.googlesource.com/chromium/tools/depot_tools.git || die "Failed to clone depot_tools repository"
+		clog "Cloning ${repo} repository"
+		git clone -q --depth=1 "https://chromium.googlesource.com/chromium/tools/${repo}.git" ||
+			die "Failed to clone ${repo} repository"
 	fi
-	export PATH="$(pwd)/depot_tools:${PATH}"
 }
 
-# This script configures the gclient for Chromium development.
+# This function configures the gclient for Chromium development.
 #
-# Functions:
+# Usage:
 #
 # configure_gclient(version)
 #   - Configures gclient with the specified Chromium version.
@@ -47,12 +43,13 @@ get_depot_tools() {
 #     - Configures gclient to use the specified Chromium version from the repository.
 #     - Appends the target operating system (Linux) to the .gclient configuration file.
 configure_gclient() {
-	if [ -z "$1" ]; then
+	local version="${1}"
+	if [ -z "${version}" ]; then
 		die "${FUNCNAME}: No version specified"
 	fi
-	clog "Configuring gclient with version ${1}"
-	gclient config --name src "https://chromium.googlesource.com/chromium/src.git@${1}" ||
-		die "Failed to configure gclient with version ${1}"
+	clog "Configuring gclient with version ${version}"
+	gclient config --name src "https://chromium.googlesource.com/chromium/src.git@${version}" ||
+		die "Failed to configure gclient with version ${version}"
 	echo "target_os = [ 'linux' ]" >> .gclient
 }
 
@@ -70,15 +67,55 @@ configure_gclient() {
 # https://chromium.googlesource.com/chromium/tools/build/+/refs/heads/main/recipes/recipes/publish_tarball.py
 run_hooks() {
 	clog "Running post-checkout hooks"
+
 	src/build/util/lastchange.py -o src/build/util/LASTCHANGE
-	src/build/util/lastchange.py -m GPU_LISTS_VERSION --revision-id-only --header src/gpu/config/gpu_lists_version.h
-	src/build/util/lastchange.py -m SKIA_COMMIT_HASH -s src/third_party/skia --header src/skia/ext/skia_commit_hash.h
-	src/build/util/lastchange.py -s src/third_party/dawn --revision src/gpu/webgpu/DAWN_VERSION
+
+	src/build/util/lastchange.py \
+		-m GPU_LISTS_VERSION \
+		--revision-id-only \
+		--header src/gpu/config/gpu_lists_version.h
+
+	src/build/util/lastchange.py \
+		-m SKIA_COMMIT_HASH \
+		-s src/third_party/skia \
+		--header src/skia/ext/skia_commit_hash.h
+
+	src/build/util/lastchange.py \
+		-s src/third_party/dawn \
+		--revision src/gpu/webgpu/DAWN_VERSION
+
 	touch src/chrome/test/data/webui/i18n_process_css_test.html
-	src/tools/update_pgo_profiles.py '--target=linux' update '--gs-url-base=chromium-optimization-profiles/pgo_profiles' ||
+
+	src/tools/update_pgo_profiles.py \
+		--target=linux \
+		update \
+		--gs-url-base=chromium-optimization-profiles/pgo_profiles ||
 		die "Failed to update PGO profiles"
-	src/v8/tools/builtins-pgo/download_profiles.py --force --check-v8-revision --depot-tools depot_tools download ||
+
+	src/v8/tools/builtins-pgo/download_profiles.py \
+		--force \
+		--check-v8-revision \
+		--depot-tools depot_tools \
+		download ||
 		die "Failed to download V8 PGO profiles"
+
+	if ! src/tools/clang/scripts/build.py \
+		--without-android \
+		--use-system-cmake \
+		--skip-build \
+		--without-fuchsia
+	then
+		cwarn "Failed to download LLVM components, excluding from tarball"
+		rm -rf src/third_party/llvm
+	fi
+
+	if ! src/tools/rust/build_rust.py --sync-for-gnrt
+	then
+		cwarn "Failed to download Rust components, excluding from tarball"
+		rm -rf src/third_party/rust-src
+	fi
+
+	cp -f build/recipes/recipe_modules/chromium/resources/clang-format src/buildtools/linux64/
 }
 
 get_gn_sources() {
@@ -99,72 +136,183 @@ get_gn_sources() {
 	python3 "${git_root}/build/gen.py" || die "Failed to generate last_commit_position.h"
 
 	# Move GN sources to the tools/gn directory
-	find "${git_root}" -maxdepth 1 -mindepth 1 -not -name ".git" -not -name ".gitignore" -not -name ".linux-sysroot" -not -name "out" -print | while read -r f; do
+	find "${git_root}" \
+		-maxdepth 1 -mindepth 1 \
+		-not -name ".git" \
+		-not -name ".gitignore" \
+		-not -name ".linux-sysroot" \
+		-not -name "out" \
+		-print \
+	| while read -r f; do
 		basename=$(basename "$f")
 		rm -rf "$tools_gn/$basename"
-		mv "$f" "$tools_gn/$basename" || die "Failed to move $basename"
+		mv "$f" "$tools_gn/$basename" ||
+			die "Failed to move $basename"
 	done
 
 	# Move last_commit_position.h
-	mv "${git_root}/out/last_commit_position.h" "${tools_gn}/bootstrap/last_commit_position.h" || die "Failed to move last_commit_position.h"
+	mv \
+		"${git_root}/out/last_commit_position.h" \
+		"${tools_gn}/bootstrap/last_commit_position.h" ||
+		die "Failed to move last_commit_position.h"
 
 	# Clean up temporary directory
 	rm -rf "$temp_dir" || die "Failed to remove temporary directory"
+}
+
+# This function should match the behavior of the export_lite_tarball()
+# function in the publish_tarball.py script (excluding the export_tarball
+# invocation, which we do later).
+#
+prune_lite_excluded_dirs() {
+	local excluded_directories=$(grep -v '#' <<END
+		android_webview
+		build/linux/debian_bullseye_amd64-sysroot
+		build/linux/debian_bullseye_i386-sysroot
+		buildtools/reclient
+		chrome/android
+		chromecast
+		ios
+		native_client
+		native_client_sdk
+		third_party/android_platform
+		third_party/angle/third_party/VK-GL-CTS
+		third_party/apache-linux
+		third_party/catapult/third_party/vinn/third_party/v8
+		third_party/closure_compiler
+		third_party/instrumented_libs
+		third_party/llvm
+		third_party/llvm-build
+		third_party/llvm-build-tools
+		third_party/node/linux
+		third_party/rust-src
+		third_party/rust-toolchain
+		third_party/webgl
+		third_party/blink/manual_tests
+		# Note: perf_tests is also in TEST_DIRS
+		third_party/blink/perf_tests
+END
+	)
+
+	# Make destructive file operations on the copy of the checkout.
+	clog "Making hard-linked copy of tree for non-destructive pruning"
+	rm -rf src-lite
+	cp -al src src-lite
+
+	clog "Pruning directories excluded from lite tarball"
+	for directory in ${excluded_directories}; do
+		test -d "src-lite/${directory}" || continue
+		find "src-lite/${directory}" \
+			-type f,l \
+			-regextype egrep \
+			! -regex '.*\.(gn|gni|grd|grdp|isolate|pydeps)(\.[^ /]+)?' \
+			! '(' '(' -iname '*COPYING*'   -o \
+				  -iname '*Copyright*' -o \
+				  -iname '*LICENSE*' \
+			      ')' \
+			      ! -iregex '.*\.(cc|cfg|cpp|h|java|js|json|m|patch|pl|py|rs|sh|sha1|stderr|ts|ya?ml)' \
+			  ')' \
+			-delete
+	done
+
+	# Empty directories take up space in the tarball.
+	find src-lite -path 'src/.git/*' -o -type d -empty -delete
 }
 
 # This function exports the tarballs for a given version of Chromium.
 # We suffix the tarball with -linux so that it doesn't conflict with
 # official tarballs, whenever they come out.
 export_tarballs() {
-	if [ -z "$1" ]; then
+	local version="$1"
+	if [ -z "${version}" ]; then
 		die "${FUNCNAME}: No version specified"
 	fi
 	if [[ ! -d "out" ]]; then
 		mkdir out || die "Failed to create out directory"
 	fi
-	clog "Exporting tarballs for version ${1}:"
-	clog "Exporting test data tarball"
-	./export_tarball.py --version --xz --test-data "chromium-${1}" --src-dir src/
-	mv "chromium-${1}.tar.xz" "out/chromium-${1}-linux-testdata.tar.xz" || die "Failed to move test data tarball"
-	clog "Exporting main tarball"
-	./export_tarball.py --version --xz --remove-nonessential-files chromium-"${1}" --src-dir src/
-	mv "chromium-${1}.tar.xz" "out/chromium-${1}-linux.tar.xz" || die "Failed to move main tarball"
+	clog "Exporting tarballs for version ${version}:"
 
-	# Simpler version of
-	# https://chromium.googlesource.com/chromium/tools/build/+/refs/heads/main/recipes/recipe_modules/chromium/resources/generate_hashes.py
+	clog "Exporting test data tarball"
+	build/recipes/recipe_modules/chromium/resources/export_tarball.py \
+		--version \
+		--xz \
+		--test-data \
+		"chromium-${version}" \
+		--src-dir src/
+	mv "chromium-${version}.tar.xz" "out/chromium-${version}-linux-testdata.tar.xz" ||
+		die "Failed to move test data tarball"
+
+	clog "Exporting main tarball"
+	build/recipes/recipe_modules/chromium/resources/export_tarball.py \
+		--version \
+		--xz \
+		--remove-nonessential-files \
+		"chromium-${version}" \
+		--src-dir src-lite/
+	mv "chromium-${version}.tar.xz" "out/chromium-${version}-linux.tar.xz" ||
+		die "Failed to move main tarball"
+
 	clog "Generating hashes"
-	local hash tarball
 	pushd out &> /dev/null || die "Failed to enter out directory"
-	for tarball in "chromium-${1}-linux.tar.xz" "chromium-${1}-linux-testdata.tar.xz"; do
-		for hash in md5 sha1 sha224 sha256 sha384 sha512; do
-			echo "${hash}  $(${hash}sum ${tarball})" >> "${tarball}.hashes"
-		done
+	local tarball
+	for tarball in "chromium-${version}"-*.tar.xz; do
+		../build/recipes/recipe_modules/chromium/resources/generate_hashes.py \
+			"${tarball}" \
+			"${tarball}.hashes"
+		# Include the hashes in the log output
+		cat "${tarball}.hashes"; echo
 	done
 	popd &> /dev/null || die "Failed to exit out directory"
-	# Include the hashes in the log output
-	cat out/*.hashes
 }
 
 main() {
-	if [ -z "${1}" ]; then
+	local version="${1}"
+	if [ -z "${version}" ]; then
 		die "No version specified"
 	fi
 
-	local version="$1"
-
 	# Some Google Python scripts start with "#!/usr/bin/env python"
-	python --version 2>&1 | grep -q '^Python 3\.' || die "Python 3 must be accessible in the PATH as \"python\""
+	python --version 2>&1 | grep -q '^Python 3\.' ||
+		die "Python 3 must be accessible in the PATH as \"python\""
 
 	clog "Packaging Chromium version ${version}"
 
-	get_depot_tools
-	configure_gclient "$version"
-	# We don't need the full history of the Chromium repository to generate a tarball, and we'll run a limited subset of manual hooks.
+	get_google_repo depot_tools
+	get_google_repo build
+	export PATH="${PWD}/depot_tools:${PATH}"
+
+	clog "Checking for breaking changes"
+	patch -p1 --dry-run < check.patch ||
+		die "The publish_tarball script has changed, please update the prune_lite_excluded_dirs() function and check.patch accordingly"
+
+	configure_gclient "${version}"
+	# We don't need the full history of the Chromium repository to
+	# generate a tarball, and we'll run a limited subset of manual hooks.
 	clog "Syncing Chromium sources with no history"
 	gclient sync --nohooks --no-history
+
+	clog "Patching upstream scripts"
+	patch -p1 --no-backup-if-mismatch < tweak-tools.patch ||
+		die "Failed to patch upstream tool scripts"
+	patch -p1 --no-backup-if-mismatch < tweak-src.patch ||
+		die "Failed to patch upstream source scripts"
+
+	# This keeps down the size of the LLVM and Rust clone operations.
+	export EXTRA_GIT_CLONE_ARGS="-q --shallow-since=2024-10-01"
+
 	run_hooks
 	get_gn_sources
-	export_tarballs "$version"
+
+	clog "Un-patching upstream source scripts"
+	patch -p1 -R --no-backup-if-mismatch < tweak-src.patch ||
+		die "Failed to un-patch upstream source scripts"
+
+	prune_lite_excluded_dirs
+	export_tarballs "${version}"
+
+	clog "Un-patching upstream tool scripts"
+	patch -p1 -R --no-backup-if-mismatch < tweak-tools.patch ||
+		die "Failed to un-patch upstream tool scripts"
 }
 
 usage() {
