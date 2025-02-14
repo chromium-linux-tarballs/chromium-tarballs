@@ -292,8 +292,6 @@ main() {
 	gclient sync --nohooks --no-history
 
 	clog "Patching upstream scripts"
-	patch -p1 --no-backup-if-mismatch < tweak-tools.patch ||
-		die "Failed to patch upstream tool scripts"
 	patch -p1 --no-backup-if-mismatch < tweak-src.patch ||
 		die "Failed to patch upstream source scripts"
 
@@ -309,10 +307,6 @@ main() {
 
 	prune_lite_excluded_dirs
 	export_tarballs "${version}"
-
-	clog "Un-patching upstream tool scripts"
-	patch -p1 -R --no-backup-if-mismatch < tweak-tools.patch ||
-		die "Failed to un-patch upstream tool scripts"
 }
 
 usage() {
