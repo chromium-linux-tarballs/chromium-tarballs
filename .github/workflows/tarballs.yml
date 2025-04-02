@@ -1,5 +1,6 @@
 name: Chromium Tarball Generation
 
+# Workflow triggers on tag pushes or manual dispatch
 on:
   push:
     tags:
@@ -8,20 +9,22 @@ on:
     inputs:
       version:
         type: string
-        description: Chromium version
+        description: Tag to run the workflow for
         required: true
 
 jobs:
   generate-tarball:
     runs-on: ubuntu-latest
     outputs:
+      # Pass annotation subject and channel to other jobs
       annotation: ${{ steps.get_release_info.outputs.annotation }}
       channel: ${{ steps.get_release_info.outputs.channel }}
 
     steps:
       - name: Free up space on the runner
         run: |
-          echo Before:
+          echo ">>> Freeing up disk space"
+          echo "Before:"
           df -m .
           sudo rm -rf \
             /usr/local/.ghcup \
@@ -30,14 +33,14 @@ jobs:
             /usr/share/dotnet \
             /usr/share/swift \
             "$AGENT_TOOLSDIRECTORY"
-          echo After:
+          echo "After:"
           df -m .
+          echo ">>> Space freed"
 
       - name: Checkout repository
         uses: actions/checkout@v4
-        # tag annotations
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # Fetch all history needed for tag annotations
 
       - name: Configure Git
         run: |
@@ -47,65 +50,75 @@ jobs:
 
       - name: Get release info
         id: get_release_info
-        if: github.event_name == 'push'
+        # The fetch is necessary to get the full tag annotation, even with fetch-depth=0
         run: |
           git fetch --depth=1 origin +refs/tags/*:refs/tags/*
-          echo "annotation=$(git tag -l --format='%(contents:subject)' ${{ github.ref_name }})" >> ${GITHUB_OUTPUT}
-          echo "channel=$(git tag -l --format='%(contents:subject)' ${{ github.ref_name }} | awk '{ print $3 }')" >> ${GITHUB_OUTPUT}
-          echo "channel=$(git tag -l --format='%(contents:subject)' ${{ github.ref_name }} | awk '{ print $3 }')" >> ${GITHUB_ENV}
+          tag_subject=$(git tag -l --format='%(contents:subject)' "${{ inputs.version || github.ref_name }}")
+          echo "annotation=${tag_subject}" >> ${GITHUB_OUTPUT}
+          release_channel=$(echo "${tag_subject}" | awk '{ print $3 }')
+          echo "channel=${release_channel}" >> ${GITHUB_OUTPUT}
+          echo "Detected Tag Subject: ${tag_subject}"
+          echo "Detected Channel: ${release_channel}"
+
 
       - name: Package Chromium tarballs for ${{ inputs.version || github.ref_name }}
         run: |
-          ./package_chromium.sh ${{ inputs.version || github.ref_name }}
-          test -d src/third_party/llvm     || echo '### NOTE: Failed to download LLVM components' >> $GITHUB_STEP_SUMMARY
-          test -d src/third_party/rust-src || echo '### NOTE: Failed to download Rust components' >> $GITHUB_STEP_SUMMARY
+          ./package_chromium.sh "${{ inputs.version || github.ref_name }}"
+          # Check if expected directories exist after packaging
+          test -d `src/third_party/llvm`     || echo '* NOTE: Failed to download LLVM components (`src/third_party/llvm` missing)' >> $GITHUB_STEP_SUMMARY
+          test -d `src/third_party/rust-src` || echo '* NOTE: Failed to download Rust components (`src/third_party/rust-src` missing)' >> $GITHUB_STEP_SUMMARY
 
-      - name: Archive build artifacts
+      - name: Archive build artefacts
+        # Upload artefacts for use in subsequent jobs (S3 upload, GitHub Release)
         uses: actions/upload-artifact@v4
         with:
-            name: build-artifacts
-            path: out/
-            compression-level: 0
+            name: build-artefacts
+            path: out/chromium*.tar.xz*
+            compression-level: 0 # Tarballs are already compressed
             retention-days: 5
 
-      - name: Notify success
-        if: success() && github.event_name == 'push'
+      # Using pinned commit hash for IRC action as preferred for security/stability.
+      - name: Notify success (Generation)
+        if: success()
         uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
         with:
           server: irc.libera.chat
           notice: false
           channel: "#gentoo-chromium"
           nickname: chromium-notifs
-          message: "Successfully generated Chromium tarballs for ${{ github.ref_name }} (${{ steps.get_release_info.outputs.channel }})"
+          message: "✅ Successfully generated Chromium tarballs for ${{ inputs.version || github.ref_name }} (${{ steps.get_release_info.outputs.channel }})"
 
-      - name: Notify failure
-        if: failure() && github.event_name == 'push'
+      - name: Notify failure (Generation)
+        if: failure() || cancelled()
         uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
         with:
           server: irc.libera.chat
           notice: false
           channel: "#gentoo-chromium"
           nickname: chromium-notifs
-          message: "Failed to generate Chromium tarballs for ${{ github.ref_name }} (${{ steps.get_release_info.outputs.channel }})"
+          message: "❌ Failed to generate Chromium tarballs for ${{ inputs.version || github.ref_name }} (${{ steps.get_release_info.outputs.channel }})"
 
+  # This job can be removed after the GitHub Releases transition period.
   upload-tarball:
+    name: Upload Tarball to S3
     runs-on: ubuntu-latest
-
     needs: generate-tarball
-
     container:
       image: gentoo/stage3:nomultilib
 
     steps:
-      - name: Install dependencies
-        run: >
+      - name: Install S3 dependencies
+        run: |
           emerge-webrsync && getuto &&
-          emerge --getbinpkg s3cmd
+          emerge --noreplace --getbinpkg net-misc/s3cmd
 
-      - name: Download build artifacts
+      - name: Download build artefacts
         uses: actions/download-artifact@v4
         with:
-            name: build-artifacts
+            name: build-artefacts
+
+      - name: List downloaded artefacts
+        run: ls -l chromium*.tar.xz*
 
       - name: Upload tarballs to S3
         run: |
@@ -115,7 +128,7 @@ jobs:
           --secret_key=${{ secrets.S3_SECRET_KEY }} \
           put chromium*.tar.xz* s3://${{ vars.S3_BUCKET }}/
 
-      - name: Notify success
+      - name: Notify success (S3 Upload)
         if: success()
         uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
         with:
@@ -123,38 +136,73 @@ jobs:
           notice: false
           channel: "#gentoo-chromium"
           nickname: chromium-notifs
-          message: "Successfully uploaded Chromium tarballs for ${{ inputs.version || github.ref_name }} ${{ needs.generate-tarball.outputs.channel && format('({0})', needs.generate-tarball.outputs.channel)}}"
+          message: "✅ Successfully uploaded Chromium tarballs to S3 for ${{ inputs.version || github.ref_name }} ${{ needs.generate-tarball.outputs.channel && format('({0})', needs.generate-tarball.outputs.channel)}}"
 
-      - name: Notify failure
-        if: failure()
+      - name: Notify failure (S3 Upload)
+        if: failure() || cancelled()
         uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
         with:
           server: irc.libera.chat
           notice: false
           channel: "#gentoo-chromium"
           nickname: chromium-notifs
-          message: "Failed to upload Chromium tarballs for ${{ inputs.version || github.ref_name }} ${{ needs.generate-tarball.outputs.channel && format('({0})', needs.generate-tarball.outputs.channel)}}"
+          message: "❌ Failed to upload Chromium tarballs to S3 for ${{ inputs.version || github.ref_name }} ${{ needs.generate-tarball.outputs.channel && format('({0})', needs.generate-tarball.outputs.channel)}}"
 
+  # Create GitHub Release and upload artefacts directly to it.
   create-release:
+    name: Create GitHub Release
     runs-on: ubuntu-latest
+    # This job depends on BOTH generation AND the S3 upload succeeding during the transition period.
     needs: [generate-tarball, upload-tarball]
 
     steps:
-      - name: Create Release
-        id: create_release
-        if: github.event_name == 'push' && needs.generate-tarball.outputs.channel == 'stable'
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download build artefacts
+        uses: actions/download-artifact@v4
         with:
-          tag_name: ${{ github.ref_name }}
-          release_name: ${{ needs.generate-tarball.outputs.annotation }}
-          body: |
-            Files:
-            - [Chromium ${{ github.ref_name }}](https://chromium-tarballs.distfiles.gentoo.org/chromium-${{ github.ref_name }}-linux.tar.xz)
-            - [Chromium ${{ github.ref_name }} hashes](https://chromium-tarballs.distfiles.gentoo.org/chromium-${{ github.ref_name }}-linux.tar.xz.hashes)
-            - [Chromium ${{ github.ref_name }} testdata](https://chromium-tarballs.distfiles.gentoo.org/chromium-${{ github.ref_name }}-linux-testdata.tar.xz)
-            - [Chromium ${{ github.ref_name }} testdata hashes](https://chromium-tarballs.distfiles.gentoo.org/chromium-${{ github.ref_name }}-linux-testdata.tar.xz.hashes)
+          name: build-artefacts
 
-          draft: false
-          prerelease: false
+      - name: List downloaded artefacts
+        run: ls -l chromium*.tar.xz*
+
+      - name: Create Release and Upload Artefacts
+        id: create_release
+        uses: ncipollo/release-action@440c8c1cb0ed28b9f43e4d1d670870f059653174 # v1.16.0
+        with:
+          # Attach files matching this pattern from the workspace to the release
+          artifacts: "chromium*.tar.xz*"
+          artifactErrorsFailBuild: true # Fail the workflow if artefact upload fails
+          replacesArtifacts: true # If tag/release exists, replace assets
+          allowUpdates: true # Allow modifying existing releases for the same tag
+          # Mark as pre-release if the channel is not 'stable'
+          prerelease: ${{ needs.generate-tarball.outputs.channel != 'stable' }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ inputs.version || github.ref_name }}
+          name: ${{ needs.generate-tarball.outputs.annotation }}
+          body: |
+            **Artefacts are attached directly to this GitHub release.**
+
+            Transitional S3 Links (these may be removed in the future):
+            - [Chromium ${{ inputs.version || github.ref_name }}](https://chromium-tarballs.distfiles.gentoo.org/chromium-${{ inputs.version || github.ref_name }}-linux.tar.xz)
+            - [Chromium ${{ inputs.version || github.ref_name }} hashes](https://chromium-tarballs.distfiles.gentoo.org/chromium-${{ inputs.version || github.ref_name }}-linux.tar.xz.hashes)
+            - [Chromium ${{ inputs.version || github.ref_name }} testdata](https://chromium-tarballs.distfiles.gentoo.org/chromium-${{ inputs.version || github.ref_name }}-linux-testdata.tar.xz)
+            - [Chromium ${{ inputs.version || github.ref_name }} testdata hashes](https://chromium-tarballs.distfiles.gentoo.org/chromium-${{ inputs.version || github.ref_name }}-linux-testdata.tar.xz.hashes)
+
+      - name: Notify success (Release)
+        if: success()
+        uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
+        with:
+          server: irc.libera.chat
+          notice: false
+          channel: "#gentoo-chromium"
+          nickname: chromium-notifs
+          message: "✅ Successfully created GH release for Chromium tarballs @ ${{ inputs.version || github.ref_name }} ${{ needs.generate-tarball.outputs.channel && format('({0})', needs.generate-tarball.outputs.channel)}}"
+
+      - name: Notify failure (Release)
+        if: failure() || cancelled()
+        uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
+        with:
+          server: irc.libera.chat
+          notice: false
+          channel: "#gentoo-chromium"
+          nickname: chromium-notifs
+          message: "❌ Failed to create (or update) GH release for Chromium tarballs @ ${{ inputs.version || github.ref_name }} ${{ needs.generate-tarball.outputs.channel && format('({0})', needs.generate-tarball.outputs.channel)}}"
