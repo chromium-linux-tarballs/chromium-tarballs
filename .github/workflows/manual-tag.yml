@@ -132,7 +132,6 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "channel=$CHANNEL" >> $GITHUB_OUTPUT
           echo "version_string=$version_string" >> $GITHUB_OUTPUT
-          echo "reason=$REASON" >> $GITHUB_OUTPUT
 
       - name: Configure Git
         run: |
@@ -168,4 +167,4 @@ jobs:
           notice: false
           channel: "#gentoo-chromium"
           nickname: chromium-notifs
-          message: "🏷️ Manual release: ${{ steps.validate_tag.outputs.version_string }} (Reason: ${{ steps.validate_tag.outputs.reason }})"
+          message: "🏷️ Manual release: ${{ steps.validate_tag.outputs.version_string }}"
