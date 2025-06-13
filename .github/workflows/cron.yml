@@ -35,6 +35,7 @@ jobs:
       - name: Tag new versions
         id: tag_versions
         run: |
+          new_releases=""
           for channel in stable beta dev; do
               version=$(jq -r --arg CHANNEL "${channel}" \
                 'limit(1; .releases[] | select(.name | test("/channels/" + $CHANNEL + "/")) | .version)' \
@@ -60,44 +61,25 @@ jobs:
                     ' releases.json)
                   echo "Tagging ${_ver}"
                   git tag -a "${version}" -m "${_ver}"
-                  if [[ "${_ver}" == *beta* ]]; then
-                      echo beta="${_ver}" >> ${GITHUB_OUTPUT}
-                  elif [[ "${_ver}" == *dev* ]]; then
-                      echo dev="${_ver}" >> ${GITHUB_OUTPUT}
-                  elif [[ "${_ver}" == *stable* ]]; then
-                      echo stable="${_ver}" >> ${GITHUB_OUTPUT}
+                  if [ -n "$new_releases" ]; then
+                      new_releases="${new_releases} | ${_ver}"
+                  else
+                      new_releases="${_ver}"
                   fi
               fi
           done
           echo "Pushing tags to GitHub"
           git push --follow-tags
 
-      - name: Update IRC (Stable)
-        uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
-        if: steps.tag_versions.outputs.stable != ''
-        with:
-          server: irc.libera.chat
-          notice: false
-          channel: "#gentoo-chromium"
-          nickname: chromium-notifs
-          message: "New release: ${{ steps.tag_versions.outputs.stable }}"
+          # Export new releases for IRC notification
+          echo "new_releases=$new_releases" >> $GITHUB_OUTPUT
 
-      - name: Update IRC (Beta)
+      - name: Update IRC
         uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
-        if: steps.tag_versions.outputs.beta != ''
+        if: steps.tag_versions.outputs.new_releases != ''
         with:
           server: irc.libera.chat
           notice: false
           channel: "#gentoo-chromium"
           nickname: chromium-notifs
-          message: "New release: ${{ steps.tag_versions.outputs.beta }}"
-
-      - name: Update IRC (Dev)
-        uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
-        if: steps.tag_versions.outputs.dev != ''
-        with:
-          server: irc.libera.chat
-          notice: false
-          channel: "#gentoo-chromium"
-          nickname: chromium-notifs
-          message: "New release: ${{ steps.tag_versions.outputs.dev }}"
+          message: "🏷️ New release: ${{ steps.tag_versions.outputs.new_releases }}"
