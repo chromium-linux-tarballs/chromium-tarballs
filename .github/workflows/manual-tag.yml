@@ -1,0 +1,171 @@
+name: Manual Chromium Tag Creation
+
+on:
+  repository_dispatch:
+    types: [create-chromium-tag]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Chromium version to tag (e.g., 131.0.6778.33)'
+        required: true
+        type: string
+      channel:
+        description: 'Channel type'
+        required: true
+        type: choice
+        options:
+          - stable
+          - beta
+          - dev
+          - canary
+          - electron
+      reason:
+        description: 'Reason for manual tag creation'
+        required: false
+        type: string
+        default: 'Manual tag creation'
+
+jobs:
+  create_manual_tag:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PAT }}
+          fetch-depth: 0
+
+      - name: Validate and get tag info from chromium/chromium
+        id: validate_tag
+        run: |
+          # Set variables from inputs or repository dispatch payload
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            VERSION="${{ github.event.client_payload.version }}"
+            CHANNEL="${{ github.event.client_payload.channel }}"
+            REASON="${{ github.event.client_payload.reason }}"
+          else
+            VERSION="${{ github.event.inputs.version }}"
+            CHANNEL="${{ github.event.inputs.channel }}"
+            REASON="${{ github.event.inputs.reason }}"
+          fi
+
+          echo "Validating version: $VERSION"
+          echo "Channel: $CHANNEL"
+          echo "Reason: $REASON"
+
+          # Validate version format
+          if ! echo "$VERSION" | grep -Pq '^\d{1,4}\.\d{1,4}\.\d{1,4}\.\d{1,4}$'; then
+            echo "Error: Invalid version format. Expected format: x.y.z.w"
+            exit 1
+          fi
+
+          # Check if tag exists in chromium/chromium repository
+          echo "Checking if tag exists in chromium/chromium..."
+          response=$(curl -s -w "%{http_code}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/chromium/chromium/git/refs/tags/$VERSION" \
+            -o tag_info.json)
+
+          http_code="${response: -3}"
+
+          if [ "$http_code" != "200" ]; then
+            echo "Error: Tag $VERSION does not exist in chromium/chromium repository"
+            echo "HTTP response code: $http_code"
+            if [ -f tag_info.json ]; then
+              cat tag_info.json
+            fi
+            exit 1
+          fi
+
+          echo "Tag found in chromium/chromium repository"
+
+          # Get tag object information
+          tag_sha=$(jq -r '.object.sha' tag_info.json)
+          echo "Tag SHA: $tag_sha"
+
+          # Get tag object details to find creation date
+          curl -s \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/chromium/chromium/git/tags/$tag_sha" \
+            -o tag_object.json
+
+          # Check if it's an annotated tag or lightweight tag
+          tag_date=""
+          if jq -e '.tagger.date' tag_object.json > /dev/null 2>&1; then
+            # Annotated tag - use tagger date
+            tag_date=$(jq -r '.tagger.date' tag_object.json)
+            echo "Found annotated tag with date: $tag_date"
+          else
+            # Lightweight tag - get commit date
+            echo "Lightweight tag detected, getting commit date..."
+            curl -s \
+              -H "Accept: application/vnd.github.v3+json" \
+              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/chromium/chromium/git/commits/$tag_sha" \
+              -o commit_info.json
+
+            tag_date=$(jq -r '.committer.date' commit_info.json)
+            echo "Found commit date: $tag_date"
+          fi
+
+          if [ -z "$tag_date" ] || [ "$tag_date" = "null" ]; then
+            echo "Warning: Could not determine tag date, using current time"
+            tag_date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          fi
+
+          # Format the date to match existing format: (Month DD, YYYY at HH:MM UTC)
+          formatted_date=$(date -d "$tag_date" -u +"(%B %d, %Y at %I:%M %p UTC)")
+
+          # Create version string consistent with existing automation
+          version_string="Chromium $VERSION: $CHANNEL $formatted_date"
+
+          if [ -n "$REASON" ] && [ "$REASON" != "Manual tag creation" ]; then
+            version_string="$version_string - $REASON"
+          fi
+
+          echo "Formatted version string: $version_string"
+
+          # Export variables for next steps
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "channel=$CHANNEL" >> $GITHUB_OUTPUT
+          echo "version_string=$version_string" >> $GITHUB_OUTPUT
+          echo "reason=$REASON" >> $GITHUB_OUTPUT
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "Chromium Bot"
+          git config --global user.email "chromium@gentoo.org"
+
+      - name: Create tag
+        id: create_tag
+        run: |
+          VERSION="${{ steps.validate_tag.outputs.version }}"
+          VERSION_STRING="${{ steps.validate_tag.outputs.version_string }}"
+
+          echo "Creating tag for version: $VERSION"
+          echo "Version string: $VERSION_STRING"
+
+          # Check if tag already exists locally
+          if git rev-parse "$VERSION" >/dev/null 2>&1; then
+            echo "Tag $VERSION already exists in this repository"
+            echo "tag_created=false" >> $GITHUB_OUTPUT
+          else
+            echo "Creating new tag: $VERSION"
+            git tag -a "$VERSION" -m "$VERSION_STRING"
+            git push --tags
+            echo "tag_created=true" >> $GITHUB_OUTPUT
+            echo "Successfully created and pushed tag: $VERSION"
+          fi
+
+      - name: Update IRC
+        uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
+        if: steps.create_tag.outputs.tag_created == 'true'
+        with:
+          server: irc.libera.chat
+          notice: false
+          channel: "#gentoo-chromium"
+          nickname: chromium-notifs
+          message: "🏷️ Manual release: ${{ steps.validate_tag.outputs.version_string }} (Reason: ${{ steps.validate_tag.outputs.reason }})"
