@@ -98,62 +98,11 @@ jobs:
           nickname: chromium-notifs
           message: "❌ Failed to generate Chromium tarballs for ${{ inputs.version || github.ref_name }} (${{ steps.get_release_info.outputs.channel }})"
 
-  # This job can be removed after the GitHub Releases transition period.
-  upload-tarball:
-    name: Upload Tarball to S3
-    runs-on: ubuntu-latest
-    needs: generate-tarball
-    container:
-      image: gentoo/stage3:nomultilib
-
-    steps:
-      - name: Install S3 dependencies
-        run: |
-          emerge-webrsync && getuto &&
-          emerge --noreplace --getbinpkg net-misc/s3cmd
-
-      - name: Download build artefacts
-        uses: actions/download-artifact@v4
-        with:
-            name: build-artefacts
-
-      - name: List downloaded artefacts
-        run: ls -l chromium*.tar.xz*
-
-      - name: Upload tarballs to S3
-        run: |
-          s3cmd --host=syd1.digitaloceanspaces.com \
-          --host-bucket='%(bucket)s.syd1.digitaloceanspaces.com' \
-          --access_key=${{ secrets.S3_ACCESS_KEY }} \
-          --secret_key=${{ secrets.S3_SECRET_KEY }} \
-          put chromium*.tar.xz* s3://${{ vars.S3_BUCKET }}/
-
-      - name: Notify success (S3 Upload)
-        if: success()
-        uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
-        with:
-          server: irc.libera.chat
-          notice: false
-          channel: "#gentoo-chromium"
-          nickname: chromium-notifs
-          message: "✅ Successfully uploaded Chromium tarballs to S3 for ${{ inputs.version || github.ref_name }} ${{ needs.generate-tarball.outputs.channel && format('({0})', needs.generate-tarball.outputs.channel)}}"
-
-      - name: Notify failure (S3 Upload)
-        if: failure() || cancelled()
-        uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
-        with:
-          server: irc.libera.chat
-          notice: false
-          channel: "#gentoo-chromium"
-          nickname: chromium-notifs
-          message: "❌ Failed to upload Chromium tarballs to S3 for ${{ inputs.version || github.ref_name }} ${{ needs.generate-tarball.outputs.channel && format('({0})', needs.generate-tarball.outputs.channel)}}"
-
   # Create GitHub Release and upload artefacts directly to it.
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    # This job depends on BOTH generation AND the S3 upload succeeding during the transition period.
-    needs: [generate-tarball, upload-tarball]
+    needs: [generate-tarball]
 
     steps:
       - name: Download build artefacts
@@ -180,13 +129,6 @@ jobs:
           name: ${{ needs.generate-tarball.outputs.annotation }}
           body: |
             **Artefacts are attached directly to this GitHub release.**
-
-            Transitional S3 Links (these may be removed in the future):
-            - [Chromium ${{ inputs.version || github.ref_name }}](https://chromium-tarballs.distfiles.gentoo.org/chromium-${{ inputs.version || github.ref_name }}-linux.tar.xz)
-            - [Chromium ${{ inputs.version || github.ref_name }} hashes](https://chromium-tarballs.distfiles.gentoo.org/chromium-${{ inputs.version || github.ref_name }}-linux.tar.xz.hashes)
-            - [Chromium ${{ inputs.version || github.ref_name }} testdata](https://chromium-tarballs.distfiles.gentoo.org/chromium-${{ inputs.version || github.ref_name }}-linux-testdata.tar.xz)
-            - [Chromium ${{ inputs.version || github.ref_name }} testdata hashes](https://chromium-tarballs.distfiles.gentoo.org/chromium-${{ inputs.version || github.ref_name }}-linux-testdata.tar.xz.hashes)
-
       - name: Notify success (Release)
         if: success()
         uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
