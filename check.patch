@@ -1,13 +1,17 @@
-Note: The result of applying this patch is not used.
+From e92413c320e5e1e99205b23b10462dbfb3592667 Mon Sep 17 00:00:00 2001
+From: Matt Jolly <kangie@gentoo.org>
+Date: Wed, 27 Aug 2025 18:18:07 +1000
+Subject: [PATCH] Note: The result of applying this patch is not used.
 
 This patch serves only to check whether the relevant portion of the
 export_lite_tarball() function in the publish_tarball.py script has
 changed, indicating that we need to update the prune_lite_excluded_dirs()
 function in package_chromium.sh.
 
---- a/build/recipes/recipes/publish_tarball.py	2025-01-15 18:33:24.087269000 -0500
-+++ b/build/recipes/recipes/publish_tarball.py	2025-01-17 14:29:18.247254000 -0500
-@@ -290,63 +290,9 @@
+Signed-off-by: Matt Jolly <kangie@gentoo.org>
+--- a/build/recipes/recipes/publish_tarball.py
++++ b/build/recipes/recipes/publish_tarball.py
+@@ -320,68 +320,9 @@ def copytree_checkout(api, source_dir):
  
  def export_lite_tarball(api, source_dir, version):
    # Make destructive file operations on the copy of the checkout.
@@ -20,8 +24,6 @@ function in package_chromium.sh.
 -        'chrome/android',
 -        'chromecast',
 -        'ios',
--        'native_client',
--        'native_client_sdk',
 -        'third_party/android_platform',
 -        'third_party/angle/third_party/VK-GL-CTS',
 -        'third_party/apache-linux',
@@ -41,6 +43,12 @@ function in package_chromium.sh.
 -    ]:
 -      if api.path.exists(api.path.join(dest_dir, directory)):
 -        directories.append(directory)  # pragma: no cover
+-
+-    if version_ships_nacl(version):
+-      directories.extend([
+-          'native_client',
+-          'native_client_sdk',
+-      ])
 -
 -    for directory in directories:
 -      try:
@@ -68,9 +76,12 @@ function in package_chromium.sh.
 -    # Empty directories take up space in the tarball.
 -    api.step('prune empty directories',
 -             ['find', dest_dir, '-depth', '-type', 'd', '-empty', '-delete'])
-+##
-+## Relevant code deleted
-+##
- 
+-
++  #
++  # Relevant code deleted
++  #
      export_tarball(
          api,
+         # Verbose output helps avoid a buildbot timeout when no output
+-- 
+2.50.1
