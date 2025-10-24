@@ -81,8 +81,10 @@ run_hooks() {
 		--header src/skia/ext/skia_commit_hash.h
 
 	src/build/util/lastchange.py \
+		-m DAWN_COMMIT_HASH \
 		-s src/third_party/dawn \
-		--revision src/gpu/webgpu/DAWN_VERSION
+		--revision src/gpu/webgpu/DAWN_VERSION \
+		--header src/gpu/webgpu/dawn_commit_hash.h
 
 	touch src/chrome/test/data/webui/i18n_process_css_test.html
 
