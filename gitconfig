@@ -1,0 +1,15 @@
+# Reduce noise
+[advice]
+	detachedHead = false
+
+# The following settings are used in Google's tarball-building process,
+# visible under third_party/rust-src/.git/
+
+[init]
+	defaultBranch = master
+
+[user]
+	name = chromium-tarball-builder
+	email = chromium-tarball-builder@chops-service-accounts.iam.gserviceaccount.com
+
+# end gitconfig

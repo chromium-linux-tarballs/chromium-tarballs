@@ -11,11 +11,3 @@ This patch is applied by the package_chromium.sh script.
  
    if RunCommand(clone_cmd, fail_hard=False):
      os.chdir(dir)
-@@ -546,6 +546,7 @@
- 
- 
- def DownloadDebianSysroot(platform_name, skip_download=False):
-+  skip_download = True
-   # Download sysroots. This uses basically Chromium's sysroots, but with
-   # minor changes:
-   # - glibc version bumped to 2.18 to make __cxa_thread_atexit_impl
