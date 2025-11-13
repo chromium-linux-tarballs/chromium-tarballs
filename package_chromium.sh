@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # This script is used to package the Chromium browser sources into a tarball for a given version.
 
-source logging.sh
+base=$(cd "$(dirname $0)" && pwd)
+source "${base}/logging.sh" || exit
 
-set -e
+set -eu
 umask 022
 
 # This function clones one of Google's Chromium-related tool repositories.
@@ -101,20 +102,29 @@ run_hooks() {
 		download ||
 		die "Failed to download V8 PGO profiles"
 
-	if ! src/tools/clang/scripts/build.py \
-		--without-android \
-		--use-system-cmake \
-		--skip-build \
-		--without-fuchsia
-	then
-		cwarn "Failed to download LLVM components, excluding from tarball"
-		rm -rf src/third_party/llvm
-	fi
+	if ${GENERATE_ALL}; then
+		# This keeps down the size of the LLVM clone operation.
+		export EXTRA_GIT_CLONE_ARGS="-q --shallow-since=2025-09-01"
 
-	if ! src/tools/rust/build_rust.py --sync-for-gnrt
-	then
-		cwarn "Failed to download Rust components, excluding from tarball"
-		rm -rf src/third_party/rust-src
+		if ! src/tools/clang/scripts/build.py \
+			--without-android \
+			--use-system-cmake \
+			--skip-build \
+			--without-fuchsia
+		then
+			cwarn "Failed to download LLVM components, excluding from tarball"
+			rm -rf src/third_party/llvm
+		fi
+
+		# Note: Google's mirror of the Rust Git repo does not appear to
+		# support shallow cloning (it simply returns an empty repo).
+		export EXTRA_GIT_CLONE_ARGS="-q"
+
+		if ! src/tools/rust/build_rust.py --sync-for-gnrt
+		then
+			cwarn "Failed to download Rust components, excluding from tarball"
+			rm -rf src/third_party/rust-src
+		fi
 	fi
 
 	cp -f build/recipes/recipe_modules/chromium/resources/clang-format src/buildtools/linux64/
@@ -167,32 +177,40 @@ get_gn_sources() {
 # invocation, which we do later).
 #
 prune_lite_excluded_dirs() {
-	local excluded_directories=$(grep -v '#' <<END
+	local prune_directories=$(grep -v '#' <<END
 		android_webview
-		build/linux/debian_bullseye_amd64-sysroot
-		build/linux/debian_bullseye_i386-sysroot
-		buildtools/reclient
 		chrome/android
 		chromecast
 		ios
+		third_party/android_platform
+		third_party/closure_compiler
+		third_party/instrumented_libs
+		third_party/libphonenumber/dist/resources/metadata
+
 		native_client
 		native_client_sdk
-		third_party/android_platform
+END
+	)
+
+	local purge_directories=$(grep -v '#' <<END
+		build/linux/debian_bullseye_amd64-sysroot
+		build/linux/debian_bullseye_i386-sysroot
+		buildtools/reclient
 		third_party/angle/third_party/VK-GL-CTS
 		third_party/apache-linux
 		third_party/catapult/third_party/vinn/third_party/v8
-		third_party/closure_compiler
-		third_party/instrumented_libs
+		third_party/dawn/third_party/khronos/OpenGL-Registry/specs
+		third_party/dawn/tools/golang
+		third_party/jetstream
 		third_party/llvm
 		third_party/llvm-build
 		third_party/llvm-build-tools
 		third_party/node/linux
 		third_party/rust-src
 		third_party/rust-toolchain
+		third_party/speedometer
 		third_party/webgl
-		third_party/blink/manual_tests
-		# Note: perf_tests is also in TEST_DIRS
-		third_party/blink/perf_tests
+		tools/skia_goldctl
 END
 	)
 
@@ -201,8 +219,8 @@ END
 	rm -rf src-lite
 	cp -al src src-lite
 
-	clog "Pruning directories excluded from lite tarball"
-	for directory in ${excluded_directories}; do
+	clog "Pruning/purging directories excluded from lite tarball"
+	for directory in ${prune_directories}; do
 		test -d "src-lite/${directory}" || continue
 		find "src-lite/${directory}" \
 			-type f,l \
@@ -215,6 +233,10 @@ END
 			      ! -iregex '.*\.(cc|cfg|cpp|h|java|js|json|m|patch|pl|py|rs|sh|sha1|stderr|ts|ya?ml)' \
 			  ')' \
 			-delete
+	done
+
+	for directory in ${purge_directories}; do
+		rm -rf "src-lite/${directory}"
 	done
 
 	# Empty directories take up space in the tarball.
@@ -232,27 +254,39 @@ export_tarballs() {
 	if [[ ! -d "out" ]]; then
 		mkdir out || die "Failed to create out directory"
 	fi
-	clog "Exporting tarballs for version ${version}:"
+	clog "Exporting tarball(s) for version ${version}:"
 
-	clog "Exporting test data tarball"
-	build/recipes/recipe_modules/chromium/resources/export_tarball.py \
-		--version \
-		--xz \
-		--test-data \
-		"chromium-${version}" \
-		--src-dir src/
-	mv "chromium-${version}.tar.xz" "out/chromium-${version}-linux-testdata.tar.xz" ||
-		die "Failed to move test data tarball"
+	if ${GENERATE_ALL}; then
+		clog "Exporting test data tarball"
+		"${EXPORT_TARBALL}" \
+			--version \
+			--xz \
+			--test-data \
+			"chromium-${version}" \
+			--src-dir src/
+		mv "chromium-${version}.tar.xz" "out/chromium-${version}-linux-testdata.tar.xz" ||
+			die "Failed to move test-data tarball"
 
-	clog "Exporting main tarball"
-	build/recipes/recipe_modules/chromium/resources/export_tarball.py \
+		clog "Exporting full source tarball"
+		"${EXPORT_TARBALL}" \
+			--version \
+			--xz \
+			--remove-nonessential-files \
+			"chromium-${version}" \
+			--src-dir src/
+		mv "chromium-${version}.tar.xz" "out/chromium-${version}-linux-full.tar.xz" ||
+			die "Failed to move full tarball"
+	fi
+
+	clog "Exporting lite source tarball"
+	"${EXPORT_TARBALL}" \
 		--version \
 		--xz \
 		--remove-nonessential-files \
 		"chromium-${version}" \
 		--src-dir src-lite/
 	mv "chromium-${version}.tar.xz" "out/chromium-${version}-linux.tar.xz" ||
-		die "Failed to move main tarball"
+		die "Failed to move lite tarball"
 
 	clog "Generating hashes"
 	pushd out &> /dev/null || die "Failed to enter out directory"
@@ -284,7 +318,7 @@ main() {
 	export PATH="${PWD}/depot_tools:${PATH}"
 
 	clog "Checking for breaking changes"
-	patch -p1 --dry-run < check.patch ||
+	patch -p1 --dry-run < "${base}/check.patch" ||
 		die "The publish_tarball script has changed, please update the prune_lite_excluded_dirs() function and check.patch accordingly"
 
 	configure_gclient "${version}"
@@ -294,17 +328,14 @@ main() {
 	gclient sync --nohooks --no-history
 
 	clog "Patching upstream scripts"
-	patch -p1 --no-backup-if-mismatch < tweak-src.patch ||
+	patch -p1 --no-backup-if-mismatch < "${base}/tweak-src.patch" ||
 		die "Failed to patch upstream source scripts"
-
-	# This keeps down the size of the LLVM and Rust clone operations.
-	export EXTRA_GIT_CLONE_ARGS="-q --shallow-since=2024-10-01"
 
 	run_hooks
 	get_gn_sources
 
 	clog "Un-patching upstream source scripts"
-	patch -p1 -R --no-backup-if-mismatch < tweak-src.patch ||
+	patch -p1 -R --no-backup-if-mismatch < "${base}/tweak-src.patch" ||
 		die "Failed to un-patch upstream source scripts"
 
 	prune_lite_excluded_dirs
@@ -320,5 +351,21 @@ usage() {
 if [ "$#" -ne 1 ]; then
 	usage
 fi
+
+export GIT_CONFIG_GLOBAL="${base}/gitconfig"
+
+if [ -n "${EXPORT_TARBALL:-}" ]; then
+	clog "Using export_tarball script at ${EXPORT_TARBALL}"
+else
+	EXPORT_TARBALL=build/recipes/recipe_modules/chromium/resources/export_tarball.py
+fi
+
+if [ "_${GENERATE_ALL:-}" = _true ]; then
+	clog "Generation of all tarballs requested"
+else
+	GENERATE_ALL=false
+fi
+
+export TZ=PST8PDT
 
 main "$@"
