@@ -87,9 +87,6 @@ run_hooks() {
 		--revision src/gpu/webgpu/DAWN_VERSION \
 		--header src/gpu/webgpu/dawn_commit_hash.h
 
-	(cd src/third_party/devtools-frontend/src &&
-		python3 scripts/deps/sync_rollup_libs.py)
-
 	touch src/chrome/test/data/webui/i18n_process_css_test.html
 
 	src/tools/update_pgo_profiles.py \
