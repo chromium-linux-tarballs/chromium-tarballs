@@ -88,7 +88,7 @@ run_hooks() {
 		--header src/gpu/webgpu/dawn_commit_hash.h
 
 	(cd src/third_party/devtools-frontend/src &&
-		python3 scripts/deps/sync_rollup_libs.py)
+		python3 scripts/deps/sync_rollup_libs.py) || true
 
 	touch src/chrome/test/data/webui/i18n_process_css_test.html
 
