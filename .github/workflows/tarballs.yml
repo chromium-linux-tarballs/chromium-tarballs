@@ -79,7 +79,7 @@ jobs:
 
       # Using pinned commit hash for IRC action as preferred for security/stability.
       - name: Notify success (Generation)
-        if: success()
+        if: success() && github.repository == 'chromium-linux-tarballs/chromium-tarballs'
         uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
         with:
           server: irc.libera.chat
@@ -89,7 +89,7 @@ jobs:
           message: "✅ Successfully generated Chromium tarballs for ${{ inputs.version || github.ref_name }} (${{ steps.get_release_info.outputs.channel }})"
 
       - name: Notify failure (Generation)
-        if: failure() || cancelled()
+        if: (failure() || cancelled()) && github.repository == 'chromium-linux-tarballs/chromium-tarballs'
         uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
         with:
           server: irc.libera.chat
@@ -130,7 +130,7 @@ jobs:
           body: |
             **Artefacts are attached directly to this GitHub release.**
       - name: Notify success (Release)
-        if: success()
+        if: success() && github.repository == 'chromium-linux-tarballs/chromium-tarballs'
         uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
         with:
           server: irc.libera.chat
@@ -140,7 +140,7 @@ jobs:
           message: "✅ Successfully created GH release for Chromium tarballs @ ${{ inputs.version || github.ref_name }} ${{ needs.generate-tarball.outputs.channel && format('({0})', needs.generate-tarball.outputs.channel)}}"
 
       - name: Notify failure (Release)
-        if: failure() || cancelled()
+        if: (failure() || cancelled()) && github.repository == 'chromium-linux-tarballs/chromium-tarballs'
         uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
         with:
           server: irc.libera.chat
