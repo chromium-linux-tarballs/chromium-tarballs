@@ -161,7 +161,7 @@ jobs:
 
       - name: Update IRC
         uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
-        if: steps.create_tag.outputs.tag_created == 'true'
+        if: steps.create_tag.outputs.tag_created == 'true' && github.repository == 'chromium-linux-tarballs/chromium-tarballs'
         with:
           server: irc.libera.chat
           notice: false
