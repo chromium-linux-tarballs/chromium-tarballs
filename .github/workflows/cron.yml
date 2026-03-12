@@ -26,6 +26,10 @@ jobs:
             'https://versionhistory.googleapis.com/v1/chrome/platforms/linux/channels/all/versions/all/releases?filter=channel%3C=dev&order_by=version%20desc'
           echo "Latest versions:"
           jq -r 'limit(10; .releases[].version)' releases.json
+          curl --fail-with-body --max-time 30 --no-progress-meter -o cros_releases.json \
+              'https://chromiumdash.appspot.com/cros/fetch_serving_builds?deviceCategory=ChromeOS%20Flex'
+          echo "Latest ChromeOS LTS/LTC versions:"
+          jq -r '.builds.reven | [.servingLtr, .servingLtc] | .[].chromeVersion' cros_releases.json
 
       - name: Configure Git
         run: |
@@ -36,10 +40,23 @@ jobs:
         id: tag_versions
         run: |
           new_releases=""
-          for channel in stable beta dev; do
-              version=$(jq -r --arg CHANNEL "${channel}" \
-                'limit(1; .releases[] | select(.name | test("/channels/" + $CHANNEL + "/")) | .version)' \
-                releases.json)
+          for channel in stable beta dev cros_ltc cros_lts; do
+              case "${channel}" in
+                  stable|beta|dev)
+                      version=$(jq -r --arg CHANNEL "${channel}" \
+                          'limit(1; .releases[] | select(.name | test("/channels/" + $CHANNEL + "/")) | .version)' \
+                          releases.json)
+                      releases_json=releases.json
+                  ;;
+                  cros_ltc|cros_lts)
+                      version=$(jq -r --arg CHANNEL "${channel}" \
+                          '.builds.reven | if $CHANNEL == "cros_ltc" then .servingLtc elif $CHANNEL == "cros_lts" then .servingLtr end | .chromeVersion' \
+                          cros_releases.json)
+                      curl --fail-with-body --max-time 30 --no-progress-meter -o "releases_${channel}.json" \
+                          "https://versionhistory.googleapis.com/v1/chrome/platforms/chromeos/channels/all/versions/${version}/releases"
+                      releases_json="releases_${channel}.json"
+                  ;;
+              esac
               if ! echo "${version}" | tr '\n' '~' | grep -Pq '^(\d{1,4}\.){3}\d{1,4}~$'; then
                   echo "Channel \"${channel}\" has invalid version \"${version}\""
                   exit 1
@@ -58,7 +75,7 @@ jobs:
                           | sub("\\.\\d+"; "")
                           | fromdateiso8601
                           | strftime("(%B %d, %Y at %I:%M UTC)"))
-                    ' releases.json)
+                    ' "$releases_json")
                   echo "Tagging ${_ver}"
                   git tag -a "${version}" -m "${_ver}"
                   if [ -n "$new_releases" ]; then
@@ -72,7 +89,9 @@ jobs:
           git push --follow-tags
 
           # Export new releases for IRC notification
-          echo "new_releases=$new_releases" >> $GITHUB_OUTPUT
+          echo "new_releases<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$new_releases" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
 
       - name: Update IRC
         uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
