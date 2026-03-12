@@ -80,6 +80,7 @@ jobs:
       # Using pinned commit hash for IRC action as preferred for security/stability.
       - name: Notify success (Generation)
         if: success() && github.repository == 'chromium-linux-tarballs/chromium-tarballs'
+        continue-on-error: true
         uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
         with:
           server: irc.libera.chat
@@ -131,6 +132,7 @@ jobs:
             **Artefacts are attached directly to this GitHub release.**
       - name: Notify success (Release)
         if: success() && github.repository == 'chromium-linux-tarballs/chromium-tarballs'
+        continue-on-error: true
         uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
         with:
           server: irc.libera.chat
