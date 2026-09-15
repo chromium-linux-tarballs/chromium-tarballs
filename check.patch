@@ -6,49 +6,51 @@ function in package_chromium.sh.
 
 --- a/build/recipes/recipes/publish_tarball.py
 +++ b/build/recipes/recipes/publish_tarball.py
-@@ -326,77 +326,10 @@ def copytree_checkout(api, source_dir):
- def export_lite_tarball(api, source_dir, version):
+@@ -391,82 +391,9 @@ def copytree_checkout(api: DEPS, source_dir):
+ def export_lite_tarball(api: DEPS, source_dir, version):
    # Make destructive file operations on the copy of the checkout.
    with copytree_checkout(api, source_dir) as dest_dir:
 -    prune_directories = [
--        'android_webview',
--        'chrome/android',
--        'chromecast',
--        'ios',
--        'third_party/android_platform',
--        'third_party/closure_compiler',
--        'third_party/instrumented_libs',
--        'third_party/libphonenumber/dist/resources/metadata',
+-      'android_webview',
+-      'chrome/android',
+-      'chromecast',
+-      'ios',
+-      'third_party/android_platform',
+-      'third_party/closure_compiler',
+-      'third_party/instrumented_libs',
+-      'third_party/libphonenumber/dist/resources/metadata',
 -    ]
 -
 -    if version_ships_nacl(version):
--      prune_directories.extend([
+-      prune_directories.extend(
+-        [
 -          'native_client',
 -          'native_client_sdk',
--      ])
- 
+-        ]
+-      )
+-
 -    # These directories will be deleted completely rather than pruned.
 -    # Only add items that do not ship to end users! We need to retain
 -    # licensing info for anything that does.
 -    purge_directories = [
--        'build/linux/debian_bullseye_amd64-sysroot',
--        'build/linux/debian_bullseye_i386-sysroot',
--        'buildtools/reclient',
--        'third_party/angle/third_party/VK-GL-CTS',
--        'third_party/apache-linux',
--        'third_party/catapult/third_party/vinn/third_party/v8',
--        'third_party/dawn/third_party/khronos/OpenGL-Registry/specs',
--        'third_party/dawn/tools/golang',
--        'third_party/jetstream',
--        'third_party/llvm',
--        'third_party/llvm-build',
--        'third_party/llvm-build-tools',
--        'third_party/node/linux',
--        'third_party/rust-src',
--        'third_party/rust-toolchain',
--        'third_party/speedometer',
--        'third_party/webgl',
--        'tools/skia_goldctl',
+-      'build/linux/debian_bullseye_amd64-sysroot',
+-      'build/linux/debian_bullseye_i386-sysroot',
+-      'buildtools/reclient',
+-      'third_party/angle/third_party/VK-GL-CTS',
+-      'third_party/apache-linux',
+-      'third_party/catapult/third_party/vinn/third_party/v8',
+-      'third_party/dawn/third_party/khronos/OpenGL-Registry/specs',
+-      'third_party/dawn/tools/golang',
+-      'third_party/jetstream',
+-      'third_party/llvm',
+-      'third_party/llvm-build',
+-      'third_party/llvm-build-tools',
+-      'third_party/node/linux',
+-      'third_party/rust-src',
+-      'third_party/rust-toolchain',
+-      'third_party/speedometer',
+-      'third_party/webgl',
+-      'tools/skia_goldctl',
 -    ]
 -
 -    for directory in prune_directories:
@@ -75,15 +77,18 @@ function in package_chromium.sh.
 -        pass
 -
 -    for directory in purge_directories:
--      api.file.rmtree('purge %s' % directory,
--                      api.path.join(dest_dir, directory))
+-      api.file.rmtree(
+-        'purge %s' % directory, api.path.join(dest_dir, directory)
+-      )
 -
 -    # Empty directories take up space in the tarball.
--    api.step('delete empty directories',
--             ['find', dest_dir, '-depth', '-type', 'd', '-empty', '-delete'])
+-    api.step(
+-      'delete empty directories',
+-      ['find', dest_dir, '-depth', '-type', 'd', '-empty', '-delete'],
+-    )
 +    #
 +    # Relevant code deleted
 +    #
  
      export_tarball(
-         api,
+       api,
