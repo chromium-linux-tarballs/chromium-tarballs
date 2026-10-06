@@ -6,7 +6,7 @@ function in package_chromium.sh.
 
 --- a/build/recipes/recipes/publish_tarball.py
 +++ b/build/recipes/recipes/publish_tarball.py
-@@ -391,82 +391,9 @@ def copytree_checkout(api: DEPS, source_dir):
+@@ -186,74 +186,9 @@ def copytree_checkout(api: DEPS, source_dir):
  def export_lite_tarball(api: DEPS, source_dir, version):
    # Make destructive file operations on the copy of the checkout.
    with copytree_checkout(api, source_dir) as dest_dir:
@@ -20,14 +20,6 @@ function in package_chromium.sh.
 -      'third_party/instrumented_libs',
 -      'third_party/libphonenumber/dist/resources/metadata',
 -    ]
--
--    if version_ships_nacl(version):
--      prune_directories.extend(
--        [
--          'native_client',
--          'native_client_sdk',
--        ]
--      )
 -
 -    # These directories will be deleted completely rather than pruned.
 -    # Only add items that do not ship to end users! We need to retain
