@@ -164,8 +164,6 @@ prune_lite_excluded_dirs() {
 		third_party/instrumented_libs
 		third_party/libphonenumber/dist/resources/metadata
 
-		native_client
-		native_client_sdk
 END
 	)
 
