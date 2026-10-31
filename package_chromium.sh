@@ -161,6 +161,7 @@ prune_lite_excluded_dirs() {
 		ios
 		third_party/android_platform
 		third_party/closure_compiler
+		third_party/devtools-frontend/src/front_end/panels/timeline/fixtures/traces
 		third_party/instrumented_libs
 		third_party/libphonenumber/dist/resources/metadata
 END
@@ -169,10 +170,15 @@ END
 	local purge_directories=$(grep -v '#' <<END
 		build/linux/debian_bullseye_amd64-sysroot
 		build/linux/debian_bullseye_i386-sysroot
+		chrome/browser/ui/android
 		third_party/angle/third_party/VK-GL-CTS
 		third_party/apache-linux
 		third_party/catapult/third_party/vinn/third_party/v8
+		third_party/catapult/tracing/test_data
+		third_party/cpython3
+		third_party/dawn/third_party/directx-shader-compiler
 		third_party/dawn/third_party/khronos/OpenGL-Registry/specs
+		third_party/dawn/third_party/OpenGL-Registry/src/specs
 		third_party/dawn/tools/golang
 		third_party/jetstream
 		third_party/llvm
@@ -183,6 +189,7 @@ END
 		third_party/rust-toolchain
 		third_party/speedometer
 		third_party/webgl
+		third_party/webpagereplay
 		tools/skia_goldctl
 END
 	)
