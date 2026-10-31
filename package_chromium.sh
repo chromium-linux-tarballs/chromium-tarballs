@@ -218,6 +218,22 @@ END
 	find src-lite -path 'src/.git/*' -o -type d -empty -delete
 }
 
+# This function optionally runs a downstream-supplied hook to remove unwanted or
+# proprietary files from a checkout before the tarball(s) are created. The hook
+# is invoked as "CLEAN_HOOK <src-dir>" and may delete files in place. It is
+# opt-in: if CLEAN_HOOK is unset, nothing extra is removed (default behavior).
+#
+# Run this against src before prune_lite_excluded_dirs() so that both the full
+# export (from src) and the lite export (from the src-lite copy) inherit the
+# cleaned tree.
+run_clean_hook() {
+	local tree="${1}"
+	if [ -n "${CLEAN_HOOK:-}" ]; then
+		clog "Running clean hook on ${tree}: ${CLEAN_HOOK}"
+		"${CLEAN_HOOK}" "${tree}" || die "${FUNCNAME}: clean hook failed"
+	fi
+}
+
 # This function exports the tarballs for a given version of Chromium.
 # We suffix the tarball with -linux so that it doesn't conflict with
 # official tarballs, whenever they come out.
@@ -230,6 +246,11 @@ export_tarballs() {
 		mkdir out || die "Failed to create out directory"
 	fi
 	clog "Exporting tarball(s) for version ${version}:"
+
+	# --keep-nonessential omits --remove-nonessential-files so the export retains
+	# test sources that some downstreams patch (e.g. Electron's cherry-picks).
+	local -a noness=(--remove-nonessential-files)
+	${KEEP_NONESSENTIAL} && noness=()
 
 	if ${GENERATE_ALL}; then
 		clog "Exporting test data tarball"
@@ -246,7 +267,7 @@ export_tarballs() {
 		"${EXPORT_TARBALL}" \
 			--version \
 			--xz \
-			--remove-nonessential-files \
+			"${noness[@]}" \
 			"chromium-${version}" \
 			--src-dir src/
 		mv "chromium-${version}.tar.xz" "out/chromium-${version}-linux-full.tar.xz" ||
@@ -257,7 +278,7 @@ export_tarballs() {
 	"${EXPORT_TARBALL}" \
 		--version \
 		--xz \
-		--remove-nonessential-files \
+		"${noness[@]}" \
 		"chromium-${version}" \
 		--src-dir src-lite/
 	mv "chromium-${version}.tar.xz" "out/chromium-${version}-linux.tar.xz" ||
@@ -313,19 +334,26 @@ main() {
 	patch -p1 -R --no-backup-if-mismatch < "${base}/tweak-src.patch" ||
 		die "Failed to un-patch upstream source scripts"
 
+	run_clean_hook src
 	prune_lite_excluded_dirs
 	export_tarballs "${version}"
 }
 
 usage() {
-	echo "Usage: $0 <version>"
-	echo "Example: $0 91.0.4472.77"
+	echo "Usage: $0 [--keep-nonessential] <version>"
+	echo
+	echo "  --keep-nonessential  Do not apply --remove-nonessential-files, so the"
+	echo "                       lite tarball keeps test sources (larger)"
+	echo
+	echo "Environment:"
+	echo "  CLEAN_HOOK    Executable run as 'CLEAN_HOOK <src-dir>' before archiving,"
+	echo "                to remove unwanted/proprietary files (opt-in)."
+	echo "  GENERATE_ALL  Set to 'true' to build testdata, full, and lite tarballs"
+	echo "                (default: lite only)."
+	echo
+	echo "Example: $0 --keep-nonessential 91.0.4472.77"
 	exit 1
 }
-
-if [ "$#" -ne 1 ]; then
-	usage
-fi
 
 export GIT_CONFIG_GLOBAL="${base}/gitconfig"
 
@@ -341,6 +369,28 @@ else
 	GENERATE_ALL=false
 fi
 
+KEEP_NONESSENTIAL=false
+VERSION=""
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+		--keep-nonessential) KEEP_NONESSENTIAL=true ;;
+		-h|--help) usage ;;
+		--) shift; break ;;
+		-*) die "Unknown option: $1" ;;
+		*) if [ -z "${VERSION}" ]; then VERSION="$1"; else die "Unexpected argument: $1"; fi ;;
+	esac
+	shift
+done
+# A version given after a lone "--".
+if [ -z "${VERSION}" ] && [ "$#" -gt 0 ]; then
+	VERSION="$1"
+fi
+[ -z "${VERSION}" ] && usage
+
+if [ -n "${CLEAN_HOOK:-}" ]; then
+	clog "Clean hook enabled: ${CLEAN_HOOK}"
+fi
+
 export TZ=PST8PDT
 
-main "$@"
+main "${VERSION}"
