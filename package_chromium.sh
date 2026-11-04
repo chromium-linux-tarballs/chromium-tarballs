@@ -163,14 +163,12 @@ prune_lite_excluded_dirs() {
 		third_party/closure_compiler
 		third_party/instrumented_libs
 		third_party/libphonenumber/dist/resources/metadata
-
 END
 	)
 
 	local purge_directories=$(grep -v '#' <<END
 		build/linux/debian_bullseye_amd64-sysroot
 		build/linux/debian_bullseye_i386-sysroot
-		buildtools/reclient
 		third_party/angle/third_party/VK-GL-CTS
 		third_party/apache-linux
 		third_party/catapult/third_party/vinn/third_party/v8
