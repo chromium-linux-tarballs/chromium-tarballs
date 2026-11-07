@@ -164,6 +164,7 @@ prune_lite_excluded_dirs() {
 		third_party/devtools-frontend/src/front_end/panels/timeline/fixtures/traces
 		third_party/instrumented_libs
 		third_party/libphonenumber/dist/resources/metadata
+		third_party/perfetto/test
 END
 	)
 
@@ -171,25 +172,46 @@ END
 		build/linux/debian_bullseye_amd64-sysroot
 		build/linux/debian_bullseye_i386-sysroot
 		chrome/browser/ui/android
+		third_party/angle/src/tests/perf_tests
 		third_party/angle/third_party/VK-GL-CTS
 		third_party/apache-linux
+		third_party/blink/renderer/core/css/perftest_data
+		third_party/boringssl/src/crypto/cipher/test
+		third_party/boringssl/src/fuzz
+		third_party/boringssl/src/pki/testdata
 		third_party/catapult/third_party/vinn/third_party/v8
 		third_party/catapult/tracing/test_data
+		third_party/compiler-rt/src/test
 		third_party/cpython3
+		third_party/crossbench-web-tests
 		third_party/dawn/third_party/directx-shader-compiler
 		third_party/dawn/third_party/khronos/OpenGL-Registry/specs
 		third_party/dawn/third_party/OpenGL-Registry/src/specs
 		third_party/dawn/tools/golang
+		third_party/depot_tools
+		third_party/icu/source/test
 		third_party/jetstream
+		third_party/ktfmt
+		third_party/libc++/src/test
 		third_party/llvm
 		third_party/llvm-build
 		third_party/llvm-build-tools
+		third_party/llvm-libc/src/test
+		third_party/nearby/src/internal/platform/implementation/windows
 		third_party/node/linux
+		third_party/openscreen/src/third_party/llvm-build
+		third_party/pdfium/testing/resources
+		third_party/perfetto/docs
+		third_party/perfetto/src/traced/probes/ftrace/test/data
 		third_party/rust-src
 		third_party/rust-toolchain
+		third_party/skia/resources
 		third_party/speedometer
+		third_party/tflite_support/src/tensorflow_lite_support/metadata/python/tests/testdata
 		third_party/webgl
+		third_party/webgpu-cts/src
 		third_party/webpagereplay
+		third_party/webrtc/data
 		tools/skia_goldctl
 END
 	)
