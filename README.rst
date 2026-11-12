@@ -21,7 +21,6 @@ The tarballs generated via this process do not contain the following:
 Additionally no hooks are run on checkout and only a small subset are run afterwards. These are:
 
 - ``lastchange.py`` for ``build/util/LASTCHANGE`` ``gpu/config/gpu_lists_version.h`` ``skia/ext/skia_commit_hash.h`` ``gpu/webgpu/DAWN_VERSION``
-- ensure that ``chrome/test/data/webui/i18n_process_css_test.html`` exists
 - update PGO profiles for Chromium and V8
 
 This significantly reduces the size of the tarball; distributions typically want to build against their own libraries and toolchains.
@@ -72,8 +71,6 @@ While this seems daunting it's not *that* bad.
     src/build/util/lastchange.py -m GPU_LISTS_VERSION --revision-id-only --header src/gpu/config/gpu_lists_version.h
     src/build/util/lastchange.py -m SKIA_COMMIT_HASH -s src/third_party/skia --header src/skia/ext/skia_commit_hash.h
     src/build/util/lastchange.py -s src/third_party/dawn --revision src/gpu/webgpu/DAWN_VERSION
-
-    touch src/chrome/test/data/webui/i18n_process_css_test.html
 
     src/tools/update_pgo_profiles.py '--target=linux' update '--gs-url-base=chromium-optimization-profiles/pgo_profiles'
     src/v8/tools/builtins-pgo/download_profiles.py --force --check-v8-revision --depot-tools depot_tools download

@@ -129,7 +129,8 @@ get_gn_sources() {
 		-maxdepth 1 -mindepth 1 \
 		-not -name ".git" \
 		-not -name ".gitignore" \
-		-not -name ".linux-sysroot" \
+		-not -name "clang" \
+		-not -name "infra" \
 		-not -name "out" \
 		-print \
 	| while read -r f; do
@@ -157,32 +158,60 @@ prune_lite_excluded_dirs() {
 	local prune_directories=$(grep -v '#' <<END
 		android_webview
 		chrome/android
+		chrome/browser/ui/android
 		chromecast
 		ios
 		third_party/android_platform
+		third_party/catapult/third_party/gsutil
 		third_party/closure_compiler
+		third_party/enterprise_companion
+		third_party/hunspell_dictionaries
 		third_party/instrumented_libs
-		third_party/libphonenumber/dist/resources/metadata
+		third_party/updater
 END
 	)
 
 	local purge_directories=$(grep -v '#' <<END
 		build/linux/debian_bullseye_amd64-sysroot
 		build/linux/debian_bullseye_i386-sysroot
+		buildtools/third_party/mold/cipd
+		chrome/browser/android/examples
+		docs/website
 		third_party/angle/third_party/VK-GL-CTS
 		third_party/apache-linux
 		third_party/catapult/third_party/vinn/third_party/v8
-		third_party/dawn/third_party/khronos/OpenGL-Registry/specs
+		third_party/checkstyle
+		third_party/cpython3
+		third_party/dawn/third_party/OpenGL-Registry/src/specs
 		third_party/dawn/tools/golang
+		third_party/depot_tools/external_bin
+		third_party/devtools-frontend/src/third_party/emscripten-releases
+		third_party/google-closure-library/closure
+		third_party/google-java-format
 		third_party/jetstream
+		third_party/js_code_coverage/node_modules
+		third_party/ktfmt
 		third_party/llvm
 		third_party/llvm-build
 		third_party/llvm-build-tools
+		third_party/llvm-libclang
+		third_party/nlohmann_json/src/docs
 		third_party/node/linux
+		third_party/oak/src/mcp/bin
+		third_party/openscreen/src/third_party/llvm-build
+		third_party/perfetto/docs
 		third_party/rust-src
 		third_party/rust-toolchain
+		third_party/siso
+		third_party/skia/resources
+		third_party/skia/site
 		third_party/speedometer
+		third_party/tflite/src/tensorflow/lite/g3doc
+		third_party/tflite/src/third_party/xla/docs
 		third_party/webgl
+		third_party/webpagereplay
+		tools/luci-go
+		tools/resultdb
 		tools/skia_goldctl
 END
 	)

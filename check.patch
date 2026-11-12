@@ -6,41 +6,72 @@ function in package_chromium.sh.
 
 --- a/build/recipes/recipes/publish_tarball.py
 +++ b/build/recipes/recipes/publish_tarball.py
-@@ -185,73 +185,10 @@
+@@ -185,104 +185,10 @@
  def export_lite_tarball(api: DEPS, source_dir, version):
    # Make destructive file operations on the copy of the checkout.
    with copytree_checkout(api, source_dir) as dest_dir:
 -    prune_directories = [
 -      'android_webview',
 -      'chrome/android',
+-      'chrome/browser/ui/android',
 -      'chromecast',
 -      'ios',
 -      'third_party/android_platform',
+-      'third_party/catapult/third_party/gsutil',
 -      'third_party/closure_compiler',
+-      'third_party/enterprise_companion',
+-      'third_party/hunspell_dictionaries',
 -      'third_party/instrumented_libs',
--      'third_party/libphonenumber/dist/resources/metadata',
+-      'third_party/updater',
 -    ]
  
 -    # These directories will be deleted completely rather than pruned.
 -    # Only add items that do not ship to end users! We need to retain
--    # licensing info for anything that does.
+-    # licensing info for anything that does. Also note that dirs
+-    # containing active BUILD.gn files should not be in this list,
+-    # or else "gn gen" is likely to break.
 -    purge_directories = [
 -      'build/linux/debian_bullseye_amd64-sysroot',
 -      'build/linux/debian_bullseye_i386-sysroot',
+-      'buildtools/third_party/mold/cipd',
+-      'chrome/browser/android/examples',
+-      'docs/website',
 -      'third_party/angle/third_party/VK-GL-CTS',
 -      'third_party/apache-linux',
 -      'third_party/catapult/third_party/vinn/third_party/v8',
--      'third_party/dawn/third_party/khronos/OpenGL-Registry/specs',
+-      'third_party/checkstyle',
+-      # Note: See script_executable assignment in //.gn
+-      'third_party/cpython3',
+-      'third_party/dawn/third_party/OpenGL-Registry/src/specs',
 -      'third_party/dawn/tools/golang',
+-      'third_party/depot_tools/external_bin',
+-      'third_party/devtools-frontend/src/third_party/emscripten-releases',
+-      'third_party/google-closure-library/closure',
+-      'third_party/google-java-format',
 -      'third_party/jetstream',
+-      'third_party/js_code_coverage/node_modules',
+-      'third_party/ktfmt',
 -      'third_party/llvm',
 -      'third_party/llvm-build',
 -      'third_party/llvm-build-tools',
+-      'third_party/llvm-libclang',
+-      'third_party/nlohmann_json/src/docs',
 -      'third_party/node/linux',
+-      'third_party/oak/src/mcp/bin',
+-      'third_party/openscreen/src/third_party/llvm-build',
+-      'third_party/perfetto/docs',
 -      'third_party/rust-src',
 -      'third_party/rust-toolchain',
+-      'third_party/siso',
+-      'third_party/skia/resources',
+-      'third_party/skia/site',
 -      'third_party/speedometer',
+-      'third_party/tflite/src/tensorflow/lite/g3doc',
+-      'third_party/tflite/src/third_party/xla/docs',
 -      'third_party/webgl',
+-      'third_party/webpagereplay',
+-      'tools/luci-go',
+-      'tools/resultdb',
 -      'tools/skia_goldctl',
 -    ]
 -
