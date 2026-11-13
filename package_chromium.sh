@@ -87,7 +87,7 @@ run_hooks() {
 
 	if ${GENERATE_ALL}; then
 		# This keeps down the size of the LLVM/Rust clone operations.
-		export EXTRA_GIT_CLONE_ARGS="-q --shallow-since=2025-05-01"
+		export EXTRA_GIT_CLONE_ARGS="-q --shallow-since=1_year_ago"
 
 		if ! src/tools/clang/scripts/build.py \
 			--without-android \
@@ -110,7 +110,7 @@ run_hooks() {
 get_gn_sources() {
 	clog "Fetching GN sources"
 	local temp_dir git_root tools_gn gn_commit basename
-	temp_dir=$(mktemp -d)
+	temp_dir=$(mktemp -d -p '' gn.XXXXXX)
 	git_root="${temp_dir}/gn"
 	tools_gn="src/tools/gn"
 	# This is x86_64 only(?); we should add support for other architectures in the future
@@ -123,6 +123,9 @@ get_gn_sources() {
 
 	# Generate last_commit_position.h
 	python3 "${git_root}/build/gen.py" || die "Failed to generate last_commit_position.h"
+
+	# In case we previously modified this
+	git -C "${tools_gn}" clean -dfq
 
 	# Move GN sources to the tools/gn directory
 	find "${git_root}" \
@@ -256,7 +259,7 @@ export_tarballs() {
 	if [[ ! -d "out" ]]; then
 		mkdir out || die "Failed to create out directory"
 	fi
-	clog "Exporting tarball(s) for version ${version}:"
+	clog "Exporting tarball(s) for version ${version}"
 
 	if ${GENERATE_ALL}; then
 		clog "Exporting test data tarball"

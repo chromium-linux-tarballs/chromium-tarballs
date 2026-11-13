@@ -13,7 +13,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # If we use the default github.token we can't trigger workflows when we push new tags
           token: ${{ secrets.PAT }}
