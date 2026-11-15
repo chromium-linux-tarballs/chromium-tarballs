@@ -65,8 +65,8 @@ jobs:
         run: |
           ./package_chromium.sh "${{ inputs.version || github.ref_name }}"
           # Check if expected directories exist after packaging
-          test -d `src/third_party/llvm`     || echo '* NOTE: Failed to download LLVM components (`src/third_party/llvm` missing)' >> $GITHUB_STEP_SUMMARY
-          test -d `src/third_party/rust-src` || echo '* NOTE: Failed to download Rust components (`src/third_party/rust-src` missing)' >> $GITHUB_STEP_SUMMARY
+          test -d src/third_party/llvm     || echo '* NOTE: Failed to download LLVM components (`src/third_party/llvm` missing)' >> $GITHUB_STEP_SUMMARY
+          test -d src/third_party/rust-src || echo '* NOTE: Failed to download Rust components (`src/third_party/rust-src` missing)' >> $GITHUB_STEP_SUMMARY
 
       - name: Archive build artefacts
         # Upload artefacts for use in subsequent jobs (S3 upload, GitHub Release)
