@@ -13,7 +13,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # If we use the default github.token we can't trigger workflows when we push new tags
           token: ${{ secrets.PAT }}
@@ -95,7 +95,8 @@ jobs:
 
       - name: Update IRC
         uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
-        if: steps.tag_versions.outputs.new_releases != ''
+        if: steps.tag_versions.outputs.new_releases != '' && github.repository == 'chromium-linux-tarballs/chromium-tarballs'
+        continue-on-error: true
         with:
           server: irc.libera.chat
           notice: false

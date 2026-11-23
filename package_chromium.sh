@@ -56,41 +56,18 @@ configure_gclient() {
 
 # This function runs a series of hooks to update various build-related files.
 # It performs the following actions:
-# 1. Updates the LASTCHANGE file with the latest change information.
-# 2. Updates the GPU lists version header with the latest revision ID.
-# 3. Updates the Skia commit hash header with the latest commit hash from the Skia repository.
-# 4. Updates the DAWN version with the latest revision from the Dawn repository.
-# 5. Touches the i18n_process_css_test.html file to ensure that it exists. Tests fail if this file does not exist.
-# 6. Updates the PGO profiles for the Linux target using the specified Google Storage URL base.
-# 7. Updates the V8 PGO profiles.
+# * Updates the PGO profiles for the Linux target using the specified Google Storage URL base.
+# * Updates the V8 PGO profiles.
+# * Copies the clang-format script to src/buildtools/linux64/.
+#
+# If generating all tarballs:
+# * Downloads LLVM components.
+# * Downloads Rust components.
 #
 # These largely match what Google does in their process:
 # https://chromium.googlesource.com/chromium/tools/build/+/refs/heads/main/recipes/recipes/publish_tarball.py
 run_hooks() {
-	clog "Running post-checkout hooks"
-
-	src/build/util/lastchange.py -o src/build/util/LASTCHANGE
-
-	src/build/util/lastchange.py \
-		-m GPU_LISTS_VERSION \
-		--revision-id-only \
-		--header src/gpu/config/gpu_lists_version.h
-
-	src/build/util/lastchange.py \
-		-m SKIA_COMMIT_HASH \
-		-s src/third_party/skia \
-		--header src/skia/ext/skia_commit_hash.h
-
-	src/build/util/lastchange.py \
-		-m DAWN_COMMIT_HASH \
-		-s src/third_party/dawn \
-		--revision src/gpu/webgpu/DAWN_VERSION \
-		--header src/gpu/webgpu/dawn_commit_hash.h
-
-	(cd src/third_party/devtools-frontend/src &&
-		python3 scripts/deps/sync_rollup_libs.py) || true
-
-	touch src/chrome/test/data/webui/i18n_process_css_test.html
+	clog "Running additional post-checkout hooks"
 
 	src/tools/update_pgo_profiles.py \
 		--target=linux \
@@ -105,9 +82,12 @@ run_hooks() {
 		download ||
 		die "Failed to download V8 PGO profiles"
 
+	cp -f build/recipes/recipe_modules/chromium/resources/clang-format \
+		src/buildtools/linux64/
+
 	if ${GENERATE_ALL}; then
-		# This keeps down the size of the LLVM clone operation.
-		export EXTRA_GIT_CLONE_ARGS="-q --shallow-since=2025-09-01"
+		# This keeps down the size of the LLVM/Rust clone operations.
+		export EXTRA_GIT_CLONE_ARGS="-q --shallow-since=1_year_ago"
 
 		if ! src/tools/clang/scripts/build.py \
 			--without-android \
@@ -119,24 +99,18 @@ run_hooks() {
 			rm -rf src/third_party/llvm
 		fi
 
-		# Note: Google's mirror of the Rust Git repo does not appear to
-		# support shallow cloning (it simply returns an empty repo).
-		export EXTRA_GIT_CLONE_ARGS="-q"
-
 		if ! src/tools/rust/build_rust.py --sync-for-gnrt
 		then
 			cwarn "Failed to download Rust components, excluding from tarball"
 			rm -rf src/third_party/rust-src
 		fi
 	fi
-
-	cp -f build/recipes/recipe_modules/chromium/resources/clang-format src/buildtools/linux64/
 }
 
 get_gn_sources() {
 	clog "Fetching GN sources"
 	local temp_dir git_root tools_gn gn_commit basename
-	temp_dir=$(mktemp -d)
+	temp_dir=$(mktemp -d -p '' gn.XXXXXX)
 	git_root="${temp_dir}/gn"
 	tools_gn="src/tools/gn"
 	# This is x86_64 only(?); we should add support for other architectures in the future
@@ -150,12 +124,16 @@ get_gn_sources() {
 	# Generate last_commit_position.h
 	python3 "${git_root}/build/gen.py" || die "Failed to generate last_commit_position.h"
 
+	# In case we previously modified this
+	git -C "${tools_gn}" clean -dfq
+
 	# Move GN sources to the tools/gn directory
 	find "${git_root}" \
 		-maxdepth 1 -mindepth 1 \
 		-not -name ".git" \
 		-not -name ".gitignore" \
-		-not -name ".linux-sysroot" \
+		-not -name "clang" \
+		-not -name "infra" \
 		-not -name "out" \
 		-print \
 	| while read -r f; do
@@ -183,36 +161,60 @@ prune_lite_excluded_dirs() {
 	local prune_directories=$(grep -v '#' <<END
 		android_webview
 		chrome/android
+		chrome/browser/ui/android
 		chromecast
 		ios
 		third_party/android_platform
+		third_party/catapult/third_party/gsutil
 		third_party/closure_compiler
+		third_party/enterprise_companion
+		third_party/hunspell_dictionaries
 		third_party/instrumented_libs
-		third_party/libphonenumber/dist/resources/metadata
-
-		native_client
-		native_client_sdk
+		third_party/updater
 END
 	)
 
 	local purge_directories=$(grep -v '#' <<END
 		build/linux/debian_bullseye_amd64-sysroot
 		build/linux/debian_bullseye_i386-sysroot
-		buildtools/reclient
+		buildtools/third_party/mold/cipd
+		chrome/browser/android/examples
+		docs/website
 		third_party/angle/third_party/VK-GL-CTS
 		third_party/apache-linux
 		third_party/catapult/third_party/vinn/third_party/v8
-		third_party/dawn/third_party/khronos/OpenGL-Registry/specs
+		third_party/checkstyle
+		third_party/cpython3
+		third_party/dawn/third_party/OpenGL-Registry/src/specs
 		third_party/dawn/tools/golang
+		third_party/depot_tools/external_bin
+		third_party/devtools-frontend/src/third_party/emscripten-releases
+		third_party/google-closure-library/closure
+		third_party/google-java-format
 		third_party/jetstream
+		third_party/js_code_coverage/node_modules
+		third_party/ktfmt
 		third_party/llvm
 		third_party/llvm-build
 		third_party/llvm-build-tools
+		third_party/llvm-libclang
+		third_party/nlohmann_json/src/docs
 		third_party/node/linux
+		third_party/oak/src/mcp/bin
+		third_party/openscreen/src/third_party/llvm-build
+		third_party/perfetto/docs
 		third_party/rust-src
 		third_party/rust-toolchain
+		third_party/siso
+		third_party/skia/resources
+		third_party/skia/site
 		third_party/speedometer
+		third_party/tflite/src/tensorflow/lite/g3doc
+		third_party/tflite/src/third_party/xla/docs
 		third_party/webgl
+		third_party/webpagereplay
+		tools/luci-go
+		tools/resultdb
 		tools/skia_goldctl
 END
 	)
@@ -257,7 +259,7 @@ export_tarballs() {
 	if [[ ! -d "out" ]]; then
 		mkdir out || die "Failed to create out directory"
 	fi
-	clog "Exporting tarball(s) for version ${version}:"
+	clog "Exporting tarball(s) for version ${version}"
 
 	if ${GENERATE_ALL}; then
 		clog "Exporting test data tarball"
@@ -326,9 +328,9 @@ main() {
 
 	configure_gclient "${version}"
 	# We don't need the full history of the Chromium repository to
-	# generate a tarball, and we'll run a limited subset of manual hooks.
+	# generate a tarball.
 	clog "Syncing Chromium sources with no history"
-	gclient sync --nohooks --no-history
+	gclient sync -D --no-history ${EXTRA_GCLIENT_ARGS:-}
 
 	clog "Patching upstream scripts"
 	patch -p1 --no-backup-if-mismatch < "${base}/tweak-src.patch" ||

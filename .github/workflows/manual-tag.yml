@@ -33,7 +33,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           token: ${{ secrets.PAT }}
           fetch-depth: 0
@@ -163,7 +163,8 @@ jobs:
 
       - name: Update IRC
         uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
-        if: steps.create_tag.outputs.tag_created == 'true'
+        if: steps.create_tag.outputs.tag_created == 'true' && github.repository == 'chromium-linux-tarballs/chromium-tarballs'
+        continue-on-error: true
         with:
           server: irc.libera.chat
           notice: false

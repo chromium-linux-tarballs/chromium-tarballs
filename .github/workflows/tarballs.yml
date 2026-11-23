@@ -38,7 +38,7 @@ jobs:
           echo ">>> Space freed"
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0 # Fetch all history needed for tag annotations
 
@@ -65,12 +65,12 @@ jobs:
         run: |
           ./package_chromium.sh "${{ inputs.version || github.ref_name }}"
           # Check if expected directories exist after packaging
-          test -d `src/third_party/llvm`     || echo '* NOTE: Failed to download LLVM components (`src/third_party/llvm` missing)' >> $GITHUB_STEP_SUMMARY
-          test -d `src/third_party/rust-src` || echo '* NOTE: Failed to download Rust components (`src/third_party/rust-src` missing)' >> $GITHUB_STEP_SUMMARY
+          test -d src/third_party/llvm     || echo '* NOTE: Failed to download LLVM components (`src/third_party/llvm` missing)' >> $GITHUB_STEP_SUMMARY
+          test -d src/third_party/rust-src || echo '* NOTE: Failed to download Rust components (`src/third_party/rust-src` missing)' >> $GITHUB_STEP_SUMMARY
 
       - name: Archive build artefacts
         # Upload artefacts for use in subsequent jobs (S3 upload, GitHub Release)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
             name: build-artefacts
             path: out/chromium*.tar.xz*
@@ -79,7 +79,8 @@ jobs:
 
       # Using pinned commit hash for IRC action as preferred for security/stability.
       - name: Notify success (Generation)
-        if: success()
+        if: success() && github.repository == 'chromium-linux-tarballs/chromium-tarballs'
+        continue-on-error: true
         uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
         with:
           server: irc.libera.chat
@@ -89,7 +90,7 @@ jobs:
           message: "✅ Successfully generated Chromium tarballs for ${{ inputs.version || github.ref_name }} (${{ steps.get_release_info.outputs.channel }})"
 
       - name: Notify failure (Generation)
-        if: failure() || cancelled()
+        if: (failure() || cancelled()) && github.repository == 'chromium-linux-tarballs/chromium-tarballs'
         uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
         with:
           server: irc.libera.chat
@@ -130,7 +131,8 @@ jobs:
           body: |
             **Artefacts are attached directly to this GitHub release.**
       - name: Notify success (Release)
-        if: success()
+        if: success() && github.repository == 'chromium-linux-tarballs/chromium-tarballs'
+        continue-on-error: true
         uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
         with:
           server: irc.libera.chat
@@ -140,7 +142,7 @@ jobs:
           message: "✅ Successfully created GH release for Chromium tarballs @ ${{ inputs.version || github.ref_name }} ${{ needs.generate-tarball.outputs.channel && format('({0})', needs.generate-tarball.outputs.channel)}}"
 
       - name: Notify failure (Release)
-        if: failure() || cancelled()
+        if: (failure() || cancelled()) && github.repository == 'chromium-linux-tarballs/chromium-tarballs'
         uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
         with:
           server: irc.libera.chat
