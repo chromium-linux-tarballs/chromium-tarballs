@@ -18,8 +18,8 @@ on:
           - beta
           - dev
           - canary
-          - cros_ltc
-          - cros_lts
+          - cros-ltc
+          - cros-lts
           - electron
       reason:
         description: 'Reason for manual tag creation'
