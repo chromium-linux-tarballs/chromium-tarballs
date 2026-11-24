@@ -27,6 +27,13 @@ jobs:
           echo "Latest versions:"
           jq -r 'limit(10; .releases[].version)' releases.json
 
+      - name: Get CrOS LTS release info
+        run: |
+          curl --fail-with-body --max-time 30 --no-progress-meter -o releases-cros.json \
+            'https://versionhistory.googleapis.com/v1/chrome/platforms/chromeos/channels/all/versions/all/releases?filter=channel%3C=ltc&order_by=version%20desc'
+          echo "Latest ChromeOS LTS/LTC versions:"
+          jq -r 'limit(10; .releases[].version)' releases-cros.json
+
       - name: Configure Git
         run: |
           git config --global user.name "Chromium Bot"
@@ -36,10 +43,18 @@ jobs:
         id: tag_versions
         run: |
           new_releases=""
-          for channel in stable beta dev; do
+          for channel in stable beta dev ltc lts; do
+              case "${channel}" in
+                  stable|beta|dev)
+                      releases_json=releases.json
+                  ;;
+                  ltc|lts)
+                      releases_json=releases-cros.json
+                  ;;
+              esac
               version=$(jq -r --arg CHANNEL "${channel}" \
-                'limit(1; .releases[] | select(.name | test("/channels/" + $CHANNEL + "/")) | .version)' \
-                releases.json)
+                  'limit(1; .releases[] | select(.name | test("/channels/" + $CHANNEL + "/")) | .version)' \
+                  "${releases_json}")
               if ! echo "${version}" | tr '\n' '~' | grep -Pq '^(\d{1,4}\.){3}\d{1,4}~$'; then
                   echo "Channel \"${channel}\" has invalid version \"${version}\""
                   exit 1
@@ -58,7 +73,7 @@ jobs:
                           | sub("\\.\\d+"; "")
                           | fromdateiso8601
                           | strftime("(%B %d, %Y at %I:%M UTC)"))
-                    ' releases.json)
+                    ' "$releases_json")
                   echo "Tagging ${_ver}"
                   git tag -a "${version}" -m "${_ver}"
                   if [ -n "$new_releases" ]; then
@@ -72,7 +87,7 @@ jobs:
           git push --follow-tags
 
           # Export new releases for IRC notification
-          echo "new_releases=$new_releases" >> $GITHUB_OUTPUT
+          echo "new_releases=$new_releases" >> "$GITHUB_OUTPUT"
 
       - name: Update IRC
         uses: Gottox/irc-message-action@5ab60c2121053c99a383753390fb169a0045694d # v2.1.5
