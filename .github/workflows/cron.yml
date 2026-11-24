@@ -43,16 +43,16 @@ jobs:
         id: tag_versions
         run: |
           new_releases=""
-          for channel in stable beta dev cros-ltc cros-lts; do
+          for channel in stable beta dev ltc lts; do
               case "${channel}" in
                   stable|beta|dev)
                       releases_json=releases.json
                   ;;
-                  cros-ltc|cros-lts)
+                  ltc|lts)
                       releases_json=releases-cros.json
                   ;;
               esac
-              version=$(jq -r --arg CHANNEL "${channel/cros-/}" \
+              version=$(jq -r --arg CHANNEL "${channel}" \
                   'limit(1; .releases[] | select(.name | test("/channels/" + $CHANNEL + "/")) | .version)' \
                   "${releases_json}")
               if ! echo "${version}" | tr '\n' '~' | grep -Pq '^(\d{1,4}\.){3}\d{1,4}~$'; then
