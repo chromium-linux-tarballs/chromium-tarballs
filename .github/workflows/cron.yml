@@ -63,16 +63,17 @@ jobs:
               if git rev-parse "${version}" >/dev/null 2>&1; then
                   echo "Tag ${version} already exists"
               else
-                  _ver=$(jq -r --arg VERSION "${version}" \
-                    '.releases[]
+                  _ver=$(jq -r --arg CHANNEL "${channel}" --arg VERSION "${version}" \
+                    'limit(1; .releases[]
                      | select(.version==$VERSION)
+                     | select(.name | test("/channels/\($CHANNEL)/"))
                      | "Chromium " + .version + ": "
-                       + (.name | sub(".*/channels/(?<ch>\\w+)/.*"; "\(.ch)"))
+                       + $CHANNEL
                        + " "
                        + (.serving.startTime
                           | sub("\\.\\d+"; "")
                           | fromdateiso8601
-                          | strftime("(%B %d, %Y at %I:%M UTC)"))
+                          | strftime("(%B %d, %Y at %I:%M UTC)")) )
                     ' "$releases_json")
                   echo "Tagging ${_ver}"
                   git tag -a "${version}" -m "${_ver}"
