@@ -18,8 +18,9 @@ on:
           - beta
           - dev
           - canary
-          - ltc
+          - extended
           - lts
+          - ltc
           - electron
       reason:
         description: 'Reason for manual tag creation'

@@ -9,30 +9,33 @@ on:
 
 jobs:
   tag_chromium_versions:
-    runs-on: ubuntu-latest
-
+    runs-on: ubuntu-slim
+    env:
+      CHANNEL_PLATFORM_LIST: stable=linux beta=linux dev=linux extended=win lts=chromeos ltc=chromeos
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
           # If we use the default github.token we can't trigger workflows when we push new tags
-          token: ${{ secrets.PAT }}
+          token: ${{ secrets.PAT || github.token }}
           # If we don't set fetch-depth to 0, we won't be able to fetch tags
           fetch-depth: 0
 
       - name: Get Chromium release info
         run: |
+          starttime=$(date -Isec -d '7 days ago' -u | sed 's/+.*/Z/')
           curl --fail-with-body --max-time 30 --no-progress-meter -o releases.json \
-            'https://versionhistory.googleapis.com/v1/chrome/platforms/linux/channels/all/versions/all/releases?filter=channel%3C=dev&order_by=version%20desc'
-          echo "Latest versions:"
-          jq -r 'limit(10; .releases[].version)' releases.json
-
-      - name: Get CrOS LTS release info
-        run: |
-          curl --fail-with-body --max-time 30 --no-progress-meter -o releases-cros.json \
-            'https://versionhistory.googleapis.com/v1/chrome/platforms/chromeos/channels/all/versions/all/releases?filter=channel%3C=ltc&order_by=version%20desc'
-          echo "Latest ChromeOS LTS/LTC versions:"
-          jq -r 'limit(10; .releases[].version)' releases-cros.json
+            "https://versionhistory.googleapis.com/v1/chrome/platforms/all/channels/all/versions/all/releases?filter=starttime%3E=$starttime&order_by=version%20desc"
+          for cp in $CHANNEL_PLATFORM_LIST; do
+              channel=${cp%=*}; platform=${cp#*=}
+              echo "Latest version(s) in the \"$channel\" channel:"
+              jq -r --arg PLATFORM "${platform}" --arg CHANNEL "${channel}" \
+                'limit(10; .releases[]
+                 | select(.name | test("/platforms/\($PLATFORM)/channels/\($CHANNEL)/"))
+                 | "  " + .version)
+                ' releases.json
+              echo " "
+          done
 
       - name: Configure Git
         run: |
@@ -42,50 +45,44 @@ jobs:
       - name: Tag new versions
         id: tag_versions
         run: |
+          exec 2>&1
           new_releases=""
-          for channel in stable beta dev ltc lts; do
-              case "${channel}" in
-                  stable|beta|dev)
-                      releases_json=releases.json
-                  ;;
-                  ltc|lts)
-                      releases_json=releases-cros.json
-                  ;;
-              esac
-              version=$(jq -r --arg CHANNEL "${channel}" \
-                  'limit(1; .releases[] | select(.name | test("/channels/" + $CHANNEL + "/")) | .version)' \
-                  "${releases_json}")
+          for cp in $CHANNEL_PLATFORM_LIST; do
+              channel=${cp%=*}; platform=${cp#*=}
+              version=$(jq -r --arg PLATFORM "${platform}" --arg CHANNEL "${channel}" \
+                'limit(1; .releases[] | select(.name | test("/platforms/\($PLATFORM)/channels/\($CHANNEL)/")) | .version)' \
+                releases.json)
+              test -n "${version}" || continue
               if ! echo "${version}" | tr '\n' '~' | grep -Pq '^(\d{1,4}\.){3}\d{1,4}~$'; then
-                  echo "Channel \"${channel}\" has invalid version \"${version}\""
+                  echo "Error: Platform \"${platform}\" channel \"${channel}\" has invalid version \"${version}\""
                   exit 1
               fi
               echo "Channel \"${channel}\" is at version ${version}"
               if git rev-parse "${version}" >/dev/null 2>&1; then
                   echo "Tag ${version} already exists"
+                  continue
+              fi
+              _ver=$(jq -r --arg PLATFORM "${platform}" --arg CHANNEL "${channel}" --arg VERSION "${version}" \
+                'limit(1; .releases[]
+                 | select(.version==$VERSION)
+                 | select(.name | test("/platforms/\($PLATFORM)/channels/\($CHANNEL)/"))
+                 | "Chromium \(.version): \($CHANNEL) "
+                   + (.serving.startTime
+                      | sub("\\.\\d+"; "")
+                      | fromdateiso8601
+                      | strftime("(%B %d, %Y at %I:%M UTC)")) )
+                ' releases.json)
+              echo "Tagging ${_ver}"
+              git tag -a "${version}" -m "${_ver}"
+              if [ -n "$new_releases" ]; then
+                  new_releases="${new_releases} | ${_ver}"
               else
-                  _ver=$(jq -r --arg CHANNEL "${channel}" --arg VERSION "${version}" \
-                    'limit(1; .releases[]
-                     | select(.version==$VERSION)
-                     | select(.name | test("/channels/\($CHANNEL)/"))
-                     | "Chromium " + .version + ": "
-                       + $CHANNEL
-                       + " "
-                       + (.serving.startTime
-                          | sub("\\.\\d+"; "")
-                          | fromdateiso8601
-                          | strftime("(%B %d, %Y at %I:%M UTC)")) )
-                    ' "$releases_json")
-                  echo "Tagging ${_ver}"
-                  git tag -a "${version}" -m "${_ver}"
-                  if [ -n "$new_releases" ]; then
-                      new_releases="${new_releases} | ${_ver}"
-                  else
-                      new_releases="${_ver}"
-                  fi
+                  new_releases="${_ver}"
               fi
           done
+          echo " "
           echo "Pushing tags to GitHub"
-          git push --follow-tags
+          (set -x; git push --follow-tags)
 
           # Export new releases for IRC notification
           echo "new_releases=$new_releases" >> "$GITHUB_OUTPUT"
